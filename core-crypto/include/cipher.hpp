@@ -89,12 +89,18 @@ public:
 
 	/**
 	 * @brief Encrypts data contained in input vector and writes the result in output vector
+	 * @note ECB/CBC: input is PKCS#7-padded before encryption; output is resized to the padded
+	 *       length (always a positive multiple of BLOCK_SIZE, strictly greater than input.size()).
+	 *       OFB/CTR: no padding applied; output must be pre-allocated to at least input.size().
 	 * @throws std::invalid_argument, EncryptionException, AESException
 	 * */
 	void encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const override;
 
 	/**
 	 * @brief Decrypts data contained in input vector and writes the result in output vector
+	 * @note ECB/CBC: PKCS#7 padding is stripped after decryption; output is resized to the
+	 *       unpadded length and must not be pre-allocated by the caller.
+	 *       OFB/CTR: no unpadding; output must be pre-allocated to at least input.size().
 	 * @throws std::invalid_argument, EncryptionException, AESException
 	 * */
 	void decryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const override;
