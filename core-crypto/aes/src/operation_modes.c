@@ -186,7 +186,9 @@ static void OutputStreamWriteBlockMoveBackwards(const Block_t* source, struct Ou
 /**
  * @brief Writes block pointed by buffer, encrypts it using ke_p key expansion, writes the result on the output stream and moves one block forward.
  */
-static void encryptBlockMoveForward(const KeyExpansion_t* ke_p, struct InputStream* is, Block_t* buffer, struct OutputStream* os){
+static void encryptBlockMoveForward(
+  const KeyExpansion_t* ke_p, struct InputStream* is, Block_t* buffer, struct OutputStream* os
+){
   InputStreamReadBlockMoveForward(buffer, is);
   encryptBlock(buffer, ke_p, buffer, false);
   OutputStreamWriteBlockMoveForward(os, buffer);
@@ -195,7 +197,9 @@ static void encryptBlockMoveForward(const KeyExpansion_t* ke_p, struct InputStre
 /**
  * @brief Writes block pointed by buffer, decrypts it using ke_p key expansion and writes the result on the output stream.
  */
-static void decryptBlockMoveForward(const KeyExpansion_t* ke_p, struct InputStream* is, Block_t* buffer, struct OutputStream* os){
+static void decryptBlockMoveForward(
+  const KeyExpansion_t* ke_p, struct InputStream* is, Block_t* buffer, struct OutputStream* os
+){
   InputStreamReadBlockMoveForward(buffer, is);
   decryptBlock(buffer, ke_p, buffer, false);
   OutputStreamWriteBlockMoveForward(os, buffer);
@@ -205,7 +209,9 @@ static void decryptBlockMoveForward(const KeyExpansion_t* ke_p, struct InputStre
  * @brief Implementation of ECB encryption operation mode.
  * @warning Supposes the input parameters are already validated.
  * */
-static void encryptECB__(const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os){
+static void encryptECB__(
+  const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os
+){
   Block_t* buffer = BlockCreateZero();
   // Encrypting the blocks
   for(size_t i = 0; i < is->info.sizeInBlocks; i++) {
@@ -219,7 +225,6 @@ static void encryptECB__(const KeyExpansion_t* ke_p, struct InputStream* is, str
   if(output == NULL) return NullOutput; \
   if(keyexpansion == NULL) return NullSource; \
   if(size == 0) return ZeroLength; \
-  if(size % BLOCK_SIZE != 0) return InvalidInputSize;
 
 #define BUILD_KEYEXPANSION_FROMBYTES(ke_p,source,keylenbits) \
   KeyExpansion_t* ke_p = KeyExpansionCreateZero(keylenbits); \
@@ -235,6 +240,7 @@ static void encryptECB__(const KeyExpansion_t* ke_p, struct InputStream* is, str
  * */
 enum ExceptionCode encryptECB(const uint8_t*const input, size_t size, const uint8_t* keyexpansion, size_t keylenbits, uint8_t*const output){
   VALIDATE_ENCRYPTION_INPUT_OUTPUT_SOURCES(input,size,keyexpansion,output)
+  if(size % BLOCK_SIZE != 0) return InvalidInputSize;
   BUILD_KEYEXPANSION_FROMBYTES(ke_p,keyexpansion,keylenbits)
   BUILD_STREAMS(is,os)
   // Encryption
@@ -261,6 +267,7 @@ static void decryptECB__(const KeyExpansion_t* ke_p, struct InputStream* is, str
  * */
 enum ExceptionCode decryptECB(const uint8_t*const input, size_t size, const uint8_t* keyexpansion, size_t keylenbits, uint8_t*const output){
   VALIDATE_ENCRYPTION_INPUT_OUTPUT_SOURCES(input,size,keyexpansion,output)
+  if(size % BLOCK_SIZE != 0) return InvalidInputSize;
   BUILD_KEYEXPANSION_FROMBYTES(ke_p,keyexpansion,keylenbits)
   BUILD_STREAMS(is,os)
   decryptECB__(ke_p, &is, &os);
@@ -307,6 +314,7 @@ static void encryptCBC__(const KeyExpansion_t* ke_p, const uint8_t*const IV, str
  * */
 enum ExceptionCode encryptCBC(const uint8_t*const input, size_t size, const uint8_t* keyexpansion, size_t keylenbits, const uint8_t* IV, uint8_t*const output){
   VALIDATE_ENCRYPTION_INPUT_OUTPUT_SOURCES(input,size,keyexpansion,output)
+  if(size % BLOCK_SIZE != 0) return InvalidInputSize;
   if(IV == NULL) return NullInitialVector;
   BUILD_KEYEXPANSION_FROMBYTES(ke_p,keyexpansion,keylenbits)
   BUILD_STREAMS(is,os)
@@ -361,6 +369,7 @@ static void decryptCBC__(const KeyExpansion_t* ke_p, const uint8_t*const IV, str
  * */
 enum ExceptionCode decryptCBC(const uint8_t*const input, size_t size, const uint8_t* keyexpansion, size_t keylenbits, const uint8_t* IV, uint8_t*const output){
   VALIDATE_ENCRYPTION_INPUT_OUTPUT_SOURCES(input,size,keyexpansion,output)
+  if(size % BLOCK_SIZE != 0) return InvalidInputSize;
   if(IV == NULL) return NullInitialVector;
   BUILD_KEYEXPANSION_FROMBYTES(ke_p,keyexpansion,keylenbits)
   BUILD_STREAMS(is,os)
