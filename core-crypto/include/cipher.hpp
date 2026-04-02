@@ -135,6 +135,8 @@ public:
 	 * */
 	void buildKeyExpansion();
 	//void formInitialVector();						// -Creates initial vector and writes it on destination array
+	static std::vector<uint8_t> pkcs7_pad(const std::vector<uint8_t>& input);
+	static std::vector<uint8_t> pkcs7_unpad(const std::vector<uint8_t>& padded);
 };
 };
 #endif

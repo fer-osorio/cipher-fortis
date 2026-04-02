@@ -3,6 +3,7 @@
 #include"../../aes/include/operation_modes.h"
 #include"../../include/cipher.hpp"
 #include"../utils/print_bytes.hpp"
+#include"../utils/padding.hpp"
 #include<cstring>
 #include<chrono>
 #include<fstream>
@@ -651,4 +652,23 @@ const uint8_t* Cipher::getInitialVectorForTesting() const{
 
 bool Cipher::setInitialVectorForTesting(const std::vector<uint8_t>& source){
     return this->config.setInitialVector(source);
+}
+
+std::vector<uint8_t> Cipher::pkcs7_pad(const std::vector<uint8_t>& input) {
+    size_t pad_len = Padding::pkcs7_pad_length(input.size(), BLOCK_SIZE);
+    std::vector<uint8_t> padded(input);
+    padded.insert(padded.end(), pad_len, static_cast<uint8_t>(pad_len));
+    return padded;
+}
+
+std::vector<uint8_t> Cipher::pkcs7_unpad(const std::vector<uint8_t>& padded) {
+    if (padded.empty() || padded.size() % BLOCK_SIZE != 0)
+        throw std::invalid_argument("pkcs7_unpad: input size is not a positive multiple of BLOCK_SIZE");
+    uint8_t pad_val = padded.back();
+    if (pad_val == 0 || pad_val > BLOCK_SIZE)
+        throw std::invalid_argument("pkcs7_unpad: invalid padding byte value");
+    for (size_t i = padded.size() - pad_val; i < padded.size(); ++i)
+        if (padded[i] != pad_val)
+            throw std::invalid_argument("pkcs7_unpad: inconsistent padding bytes");
+    return std::vector<uint8_t>(padded.begin(), padded.end() - pad_val);
 }
