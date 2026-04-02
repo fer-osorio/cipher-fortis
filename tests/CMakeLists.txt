@@ -51,6 +51,8 @@ add_ciphfortis_test(NAME test_raster_image     SOURCES unit/test_raster_image.cp
     LABEL unit
     EXTRA_LIBS ciphfortis_files ciphfortis_core ciphfortis_aes
                ciphfortis_analysis ciphfortis_test_fixtures)
+add_ciphfortis_test(NAME test_padding          SOURCES unit/test_padding.cpp
+    LABEL unit EXTRA_LIBS ciphfortis_core ciphfortis_aes)
 
 if(TARGET ciphfortis_hsm)
     add_ciphfortis_test(NAME test_hsmcipher    SOURCES unit/test_hsmcipher.cpp
