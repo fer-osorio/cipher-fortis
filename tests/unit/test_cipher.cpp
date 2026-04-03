@@ -319,3 +319,36 @@ TEST(Cipher_PKCS7, AES192_ECB) { test_pkcs7_round_trip(AESKEY_LENBITS::_192, AES
 TEST(Cipher_PKCS7, AES192_CBC) { test_pkcs7_round_trip(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::CBC); }
 TEST(Cipher_PKCS7, AES256_ECB) { test_pkcs7_round_trip(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::ECB); }
 TEST(Cipher_PKCS7, AES256_CBC) { test_pkcs7_round_trip(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::CBC); }
+
+// ── PaddingMode::None — rejects unaligned, accepts aligned ───────────────────
+
+void test_padding_mode_none(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
+    AESKEY key(ks);
+    AESCIPHER ciph(key, AESCIPHER::OperationMode(cm));
+    if (cm == AESCIPHER_OPTMODE::CBC)
+        ciph.setInitialVectorForTesting(std::vector<uint8_t>(16, 0x00));
+
+    ciph.set_padding_mode(AESCIPHER::PaddingMode::None);
+
+    // Non-aligned input must throw
+    std::vector<uint8_t> unaligned(15);
+    std::vector<uint8_t> out;
+    EXPECT_THROW(ciph.encryption(unaligned, out), std::invalid_argument);
+    EXPECT_THROW(ciph.decryption(unaligned, out), std::invalid_argument);
+
+    // Aligned input must succeed and produce same-size output
+    std::vector<uint8_t> aligned(32, 0xAB);
+    ASSERT_NO_THROW(ciph.encryption(aligned, out));
+    EXPECT_EQ(out.size(), aligned.size());
+
+    std::vector<uint8_t> recovered;
+    ASSERT_NO_THROW(ciph.decryption(out, recovered));
+    EXPECT_EQ(recovered, aligned);
+}
+
+TEST(Cipher_PaddingNone, AES128_ECB) { test_padding_mode_none(AESKEY_LENBITS::_128, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PaddingNone, AES128_CBC) { test_padding_mode_none(AESKEY_LENBITS::_128, AESCIPHER_OPTMODE::CBC); }
+TEST(Cipher_PaddingNone, AES192_ECB) { test_padding_mode_none(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PaddingNone, AES192_CBC) { test_padding_mode_none(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::CBC); }
+TEST(Cipher_PaddingNone, AES256_ECB) { test_padding_mode_none(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PaddingNone, AES256_CBC) { test_padding_mode_none(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::CBC); }
