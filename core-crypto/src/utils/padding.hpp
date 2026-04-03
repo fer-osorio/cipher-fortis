@@ -18,6 +18,13 @@ constexpr size_t pkcs7_pad_length(size_t n, size_t block_size) {
     return block_size - (n % block_size);
 }
 
+// Returns the number of zero bytes needed to align n to the nearest block_size boundary.
+// Returns 0 when n is already a multiple of block_size.
+constexpr size_t alignment_gap(size_t n, size_t block_size) {
+    size_t rem = n % block_size;
+    return rem == 0 ? 0 : block_size - rem;
+}
+
 } // namespace CipherFortis::Padding
 
 #endif
