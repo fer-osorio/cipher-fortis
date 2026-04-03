@@ -569,6 +569,10 @@ void Cipher::decrypt(const uint8_t*const data, size_t size, uint8_t*const output
     }
 }
 
+void Cipher::set_padding_mode(PaddingMode mode) {
+    this->padding_mode_ = mode;
+}
+
 void Cipher::encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const{
     if (input.empty())
         throw std::invalid_argument("Input data vector cannot be empty");
@@ -576,9 +580,19 @@ void Cipher::encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>&
     OperationMode::Identifier mode = this->config.getOperationModeID();
 
     if (mode == OperationMode::Identifier::ECB || mode == OperationMode::Identifier::CBC) {
-        std::vector<uint8_t> padded = pkcs7_pad(input);
-        output.resize(padded.size());
-        this->encrypt(padded.data(), padded.size(), output.data());
+        if (this->padding_mode_ == PaddingMode::PKCS7) {
+            std::vector<uint8_t> padded = pkcs7_pad(input);
+            output.resize(padded.size());
+            this->encrypt(padded.data(), padded.size(), output.data());
+        } else {
+            // PaddingMode::None — caller guarantees block alignment
+            if (input.size() % BLOCK_SIZE != 0)
+                throw std::invalid_argument(
+                    "Cipher::encryption: input size must be a multiple of BLOCK_SIZE "
+                    "when PaddingMode::None is set");
+            output.resize(input.size());
+            this->encrypt(input.data(), input.size(), output.data());
+        }
     } else {
         // OFB / CTR — existing behaviour unchanged
         if (output.empty())
@@ -600,11 +614,21 @@ void Cipher::decryption(const std::vector<uint8_t>& input, std::vector<uint8_t>&
     OperationMode::Identifier mode = this->config.getOperationModeID();
 
     if (mode == OperationMode::Identifier::ECB || mode == OperationMode::Identifier::CBC) {
-        // pkcs7_unpad validates block alignment and padding bytes; propagate its exception
-        std::vector<uint8_t> temp(input.size());
-        this->decrypt(input.data(), input.size(), temp.data());
-        std::vector<uint8_t> unpadded = pkcs7_unpad(temp);
-        output = std::move(unpadded);
+        if (this->padding_mode_ == PaddingMode::PKCS7) {
+            // pkcs7_unpad validates block alignment and padding bytes; propagate its exception
+            std::vector<uint8_t> temp(input.size());
+            this->decrypt(input.data(), input.size(), temp.data());
+            std::vector<uint8_t> unpadded = pkcs7_unpad(temp);
+            output = std::move(unpadded);
+        } else {
+            // PaddingMode::None — caller guarantees block alignment; no unpadding
+            if (input.size() % BLOCK_SIZE != 0)
+                throw std::invalid_argument(
+                    "Cipher::decryption: input size must be a multiple of BLOCK_SIZE "
+                    "when PaddingMode::None is set");
+            output.resize(input.size());
+            this->decrypt(input.data(), input.size(), output.data());
+        }
     } else {
         // OFB / CTR — existing behaviour unchanged
         if (output.empty())
