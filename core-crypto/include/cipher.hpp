@@ -87,19 +87,35 @@ public:
 	Cipher& operator = (const Cipher& a);
 	friend std::ostream& operator << (std::ostream& st, const Cipher& c);
 
+	enum class PaddingMode {
+		PKCS7,  // Default: ECB/CBC pad/unpad automatically; output size differs from input.
+		None    // Caller guarantees block alignment; no padding is added or stripped.
+	};
+
+	/**
+	 * @brief Sets the padding mode applied by encryption() and decryption() for ECB/CBC.
+	 * @note Defaults to PaddingMode::PKCS7. Use PaddingMode::None when the caller
+	 *       guarantees that the input is already a multiple of BLOCK_SIZE (e.g. RasterImage).
+	 *       Has no effect on OFB/CTR modes.
+	 */
+	void set_padding_mode(PaddingMode mode);
+
 	/**
 	 * @brief Encrypts data contained in input vector and writes the result in output vector
-	 * @note ECB/CBC: input is PKCS#7-padded before encryption; output is resized to the padded
-	 *       length (always a positive multiple of BLOCK_SIZE, strictly greater than input.size()).
-	 *       OFB/CTR: no padding applied; output must be pre-allocated to at least input.size().
+	 * @note ECB/CBC with PaddingMode::PKCS7 (default): input is padded; output is resized to
+	 *       the padded length (positive multiple of BLOCK_SIZE, > input.size()).
+	 *       ECB/CBC with PaddingMode::None: input must be block-aligned; output is resized to
+	 *       input.size().
+	 *       OFB/CTR: no padding; output must be pre-allocated to at least input.size().
 	 * @throws std::invalid_argument, EncryptionException, AESException
 	 * */
 	void encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const override;
 
 	/**
 	 * @brief Decrypts data contained in input vector and writes the result in output vector
-	 * @note ECB/CBC: PKCS#7 padding is stripped after decryption; output is resized to the
-	 *       unpadded length and must not be pre-allocated by the caller.
+	 * @note ECB/CBC with PaddingMode::PKCS7 (default): PKCS#7 padding is stripped; output
+	 *       is resized to the unpadded length.
+	 *       ECB/CBC with PaddingMode::None: no unpadding; output is resized to input.size().
 	 *       OFB/CTR: no unpadding; output must be pre-allocated to at least input.size().
 	 * @throws std::invalid_argument, EncryptionException, AESException
 	 * */
@@ -134,6 +150,7 @@ public:
 	bool setInitialVectorForTesting(const std::vector<uint8_t>& source);
 
 	private:
+	PaddingMode padding_mode_ = PaddingMode::PKCS7;
 	//OperationMode buildOperationMode(const OperationMode::Identifier);
 	/*
 	 * Creates key expansion
