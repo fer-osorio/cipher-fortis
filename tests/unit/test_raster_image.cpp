@@ -4,6 +4,7 @@
 #include "../../file-handlers/include/jpeg_image.hpp"
 #include "../include/raster_image_fixture.hpp"
 #include "../../core-crypto/include/encryptor.hpp"
+#include "../../core-crypto/include/cipher.hpp"
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -21,20 +22,28 @@ public:
 };
 
 TEST_F(RasterImageFixture, LoadOperations) {
+    // After load(), data is zero-padded to the nearest 16-byte boundary.
+    // pixel_data_size_ holds the original w*h*ch count.
     {
         File::PNG png(validPngPath);
         png.load();
-        EXPECT_EQ(static_cast<size_t>(300), png.get_size()) << "10x10 RGB PNG has 300 bytes";
+        EXPECT_EQ(static_cast<size_t>(300), png.get_pixel_data_size()) << "10x10 RGB: pixel_data_size_ == 300";
+        EXPECT_EQ(static_cast<size_t>(304), png.get_size()) << "10x10 RGB padded to 304 bytes";
+        EXPECT_EQ(0u, png.get_size() % 16) << "size must be a multiple of 16";
     }
     {
         File::PNG png(smallPngPath);
         png.load();
-        EXPECT_EQ(static_cast<size_t>(12), png.get_size()) << "2x2 RGB PNG has 12 bytes";
+        EXPECT_EQ(static_cast<size_t>(12), png.get_pixel_data_size()) << "2x2 RGB: pixel_data_size_ == 12";
+        EXPECT_EQ(static_cast<size_t>(16), png.get_size()) << "2x2 RGB padded to 16 bytes";
+        EXPECT_EQ(0u, png.get_size() % 16) << "size must be a multiple of 16";
     }
     {
         File::PNG png(largePngPath);
         png.load();
-        EXPECT_EQ(static_cast<size_t>(30000), png.get_size()) << "100x100 RGB PNG has 30000 bytes";
+        EXPECT_EQ(static_cast<size_t>(30000), png.get_pixel_data_size()) << "100x100 RGB: pixel_data_size_ == 30000";
+        EXPECT_EQ(static_cast<size_t>(30000), png.get_size()) << "100x100 RGB already aligned, no padding";
+        EXPECT_EQ(0u, png.get_size() % 16) << "size must be a multiple of 16";
     }
     EXPECT_THROW({
         File::PNG png(nonexistentPath);
@@ -86,8 +95,15 @@ TEST_F(RasterImageFixture, SaveOperations) {
             << "Save to original path persists the change";
 
         reloaded.apply_decryption(xor_enc);
-        EXPECT_EQ(reloaded.get_data(), original)
-            << "Decryption returns original data";
+        // apply_decryption resizes to pixel_data_size_; compare against the pixel
+        // portion of original (original may contain trailing zero-alignment bytes).
+        EXPECT_EQ(
+            reloaded.get_data(),
+            std::vector<uint8_t>(
+                original.begin(),
+                original.begin() + static_cast<std::ptrdiff_t>(reloaded.get_size())
+            )
+        ) << "Decryption returns original pixel data";
     }
 
     // Save to invalid directory throws
@@ -195,4 +211,89 @@ TEST_F(RasterImageFixture, JpegLossyRoundTrip) {
 
         fs::remove(workPath);
     }
+}
+
+// ── Block-alignment and PKCS#7 round-trip ────────────────────────────────────
+
+TEST_F(RasterImageFixture, BlockAlignmentAfterLoad) {
+    // Every supported format must yield a data buffer whose size is a multiple of 16
+    // and a pixel_data_size_ equal to w*h*channels.
+    auto check = [](File::RasterImage& img, size_t expected_pixels, const char* label) {
+        img.load();
+        EXPECT_EQ(img.get_pixel_data_size(), expected_pixels) << label << ": pixel_data_size_";
+        EXPECT_EQ(0u, img.get_size() % 16)                   << label << ": size % 16 == 0";
+        EXPECT_GE(img.get_size(), expected_pixels)            << label << ": size >= pixel count";
+    };
+
+    { File::PNG  img(validPngPath);  check(img, 300u,   "10x10 RGB PNG");  }
+    { File::PNG  img(smallPngPath);  check(img, 12u,    "2x2 RGB PNG");    }
+    { File::PNG  img(largePngPath);  check(img, 30000u, "100x100 RGB PNG"); }
+    {
+        File::JPEG img(validJpegPath);
+        img.load();  // load first to know pixel_data_size_
+        check(img, img.get_pixel_data_size(), "JPEG");
+    }
+}
+
+TEST_F(RasterImageFixture, PKCS7RoundTrip_ECB) {
+    CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
+    CipherFortis::Cipher cipher(
+        key, CipherFortis::Cipher::OperationMode(
+                CipherFortis::Cipher::OperationMode::Identifier::ECB
+             )
+     );
+
+    fs::path workPath = testDataDir / "ecb_roundtrip.png";
+    fs::copy_file(largePngPath, workPath, fs::copy_options::overwrite_existing);
+
+    File::PNG img(workPath);
+    img.load();
+    std::vector<uint8_t> original_pixels(
+        img.get_data().begin(),
+        img.get_data().begin() + static_cast<std::ptrdiff_t>(img.get_pixel_data_size())
+    );
+
+    img.apply_encryption(cipher);
+    EXPECT_NE(img.get_data(), original_pixels) << "encrypted data should differ";
+    EXPECT_EQ(0u, img.get_size() % 16)         << "encrypted buffer must be block-aligned";
+    img.save(workPath);
+
+    File::PNG reloaded(workPath);
+    reloaded.load();
+    reloaded.apply_decryption(cipher);
+    EXPECT_EQ(reloaded.get_data(), original_pixels) << "ECB round-trip must recover original pixels";
+
+    fs::remove(workPath);
+}
+
+TEST_F(RasterImageFixture, PKCS7RoundTrip_CBC) {
+    CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
+    CipherFortis::Cipher cipher(
+        key,
+        CipherFortis::Cipher::OperationMode(
+             CipherFortis::Cipher::OperationMode::Identifier::CBC
+         )
+     );
+    cipher.setInitialVectorForTesting(std::vector<uint8_t>(16, 0x5A));
+
+    fs::path workPath = testDataDir / "cbc_roundtrip.png";
+    fs::copy_file(largePngPath, workPath, fs::copy_options::overwrite_existing);
+
+    File::PNG img(workPath);
+    img.load();
+    std::vector<uint8_t> original_pixels(
+        img.get_data().begin(),
+        img.get_data().begin() + static_cast<std::ptrdiff_t>(img.get_pixel_data_size())
+    );
+
+    img.apply_encryption(cipher);
+    EXPECT_NE(img.get_data(), original_pixels) << "encrypted data should differ";
+    img.save(workPath);
+
+    File::PNG reloaded(workPath);
+    reloaded.load();
+    reloaded.apply_decryption(cipher);
+    EXPECT_EQ(reloaded.get_data(), original_pixels) << "CBC round-trip must recover original pixels";
+
+    fs::remove(workPath);
 }
