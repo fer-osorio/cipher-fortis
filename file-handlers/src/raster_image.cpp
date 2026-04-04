@@ -32,6 +32,13 @@ size_t RasterImage::get_pixel_data_size() const {
     return pixel_data_size_;
 }
 
+bool RasterImage::verify_saved_file(const std::filesystem::path& path) const {
+    int w, h, ch;
+    if (!stbi_info(path.string().c_str(), &w, &h, &ch))
+        return false;
+    return w == width_ && h == height_ && ch == channels_;
+}
+
 void RasterImage::apply_encryption(const Encryptor& algorithm) {
     // This does not feel right, it has to be revisited later
     auto* cipher = dynamic_cast<CipherFortis::Cipher*>(
