@@ -1,5 +1,5 @@
 #include "../include/raster_image.hpp"
-#include "../../core-crypto/include/cipher.hpp"
+#include "../../core-crypto/include/encryptor.hpp"
 #include "../../core-crypto/src/utils/padding.hpp"
 #include "../../third-party/stb/stb_image.h"
 #include <stdexcept>
@@ -40,36 +40,18 @@ bool RasterImage::verify_saved_file(const std::filesystem::path& path) const {
 }
 
 void RasterImage::apply_encryption(const Encryptor& algorithm) {
-    // This does not feel right, it has to be revisited later
-    auto* cipher = dynamic_cast<CipherFortis::Cipher*>(
-        const_cast<Encryptor*>(&algorithm)
-    );
-    if (cipher) {
-        using ID = CipherFortis::Cipher::OperationMode::Identifier;
-        ID mode = cipher->getOptModeID();
-        bool needs_alignment =
-            (mode == ID::ECB || mode == ID::CBC);
-        if (needs_alignment) {
-            size_t gap = CipherFortis::Padding::alignment_gap(
-                pixel_data_size_, kAesBlockSize
-            );
-            if (gap > 0)
-                this->data.insert(this->data.end(), gap, static_cast<uint8_t>(0));
-        }
-        cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::None);
+    if (algorithm.requires_block_alignment()) {
+        size_t gap = CipherFortis::Padding::alignment_gap(
+            pixel_data_size_, kAesBlockSize
+        );
+        if (gap > 0)
+            this->data.insert(this->data.end(), gap, static_cast<uint8_t>(0));
     }
     FileBase::apply_encryption(algorithm);
-    if (cipher) cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::PKCS7);
 }
 
 void RasterImage::apply_decryption(const Encryptor& algorithm) {
-    // This does not feel right either, it has to be revisited later
-    auto* cipher = dynamic_cast<CipherFortis::Cipher*>(
-        const_cast<Encryptor*>(&algorithm)
-    );
-    if (cipher) cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::None);
     FileBase::apply_decryption(algorithm);
-    if (cipher) cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::PKCS7);
     this->data.resize(pixel_data_size_);
 }
 
