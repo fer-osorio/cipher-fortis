@@ -30,6 +30,14 @@ public:
      * but the data it points to is.
      */
     virtual void decryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const = 0; // Pure virtual function
+
+    /**
+     * @brief Returns true when the encryptor requires the caller to supply a
+     *        block-aligned input (i.e. it will not add or strip padding itself).
+     * @note  Default implementation returns false. Overridden by Cipher when
+     *        the mode is ECB or CBC and PaddingMode::None is active.
+     */
+    virtual bool requires_block_alignment() const { return false; }
 };
 
 #endif // ENCRYPTOR_HPP
