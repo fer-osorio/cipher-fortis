@@ -74,3 +74,7 @@ const std::vector<uint8_t>& FileBase::get_data() const{
 size_t FileBase::get_size() const{
     return this->data.size();
 }
+
+void FileBase::append_data(const std::vector<uint8_t>& bytes) {
+    this->data.insert(this->data.end(), bytes.begin(), bytes.end());
+}

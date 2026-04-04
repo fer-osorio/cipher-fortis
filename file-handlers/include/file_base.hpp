@@ -82,6 +82,12 @@ public:
 	const std::filesystem::path& get_path() const;
 	const std::vector<uint8_t>& get_data() const;
 	size_t get_size() const;
+
+	/**
+	 * @brief Appends raw bytes to the internal data buffer.
+	 * Used to restore alignment-tail bytes before decryption.
+	 */
+	void append_data(const std::vector<uint8_t>& bytes);
 };
 
 } //namespace File
