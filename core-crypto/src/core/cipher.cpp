@@ -312,16 +312,21 @@ Cipher::Cipher(): config(OperationMode(OperationMode::Identifier::ECB), Key::Len
     for(size_t i = 0; i < keyExpLen; i++) this->keyExpansion[i] = 0;            // -Building key expansion with zeros
 }
 
-Cipher::Cipher(const Key::LengthBits lenBits, const OperationMode::Identifier optModeID):
-    config(OperationMode(optModeID), lenBits) {
+Cipher::Cipher(
+    const Key::LengthBits lenBits,
+    const OperationMode::Identifier optModeID,
+    PaddingMode padding_mode
+): config(OperationMode(optModeID), lenBits), padding_mode_(padding_mode) {
     this->buildKeyExpansion();
 }
 
-Cipher::Cipher(const Key& k, const OperationMode& optMode): key(k), config(optMode,k.getLenBits()) {
+Cipher::Cipher(const Key& k, const OperationMode& optMode, PaddingMode padding_mode)
+    : key(k), config(optMode, k.getLenBits()), padding_mode_(padding_mode) {
     this->buildKeyExpansion();
 }
 
-Cipher::Cipher(const Cipher& c): key(c.key), config(c.config) {
+Cipher::Cipher(const Cipher& c)
+    : key(c.key), config(c.config), padding_mode_(c.padding_mode_) {
     size_t keyExpLen = c.config.getKeyExpansionLengthBytes();
     this->keyExpansion = new uint8_t[keyExpLen];
     for(size_t i = 0; i < keyExpLen; i++) this->keyExpansion[i] = c.keyExpansion[i];
@@ -342,6 +347,7 @@ Cipher& Cipher::operator = (const Cipher& c) {
         }
         std::memcpy(this->keyExpansion, c.keyExpansion, ckeyExpLen);
         this->config = c.config;
+        this->padding_mode_ = c.padding_mode_;
     }
     return *this;
 }
@@ -569,8 +575,11 @@ void Cipher::decrypt(const uint8_t*const data, size_t size, uint8_t*const output
     }
 }
 
-void Cipher::set_padding_mode(PaddingMode mode) {
-    this->padding_mode_ = mode;
+bool Cipher::requires_block_alignment() const {
+    using ID = OperationMode::Identifier;
+    ID mode = this->config.getOperationModeID();
+    return (mode == ID::ECB || mode == ID::CBC)
+        && this->padding_mode_ == PaddingMode::None;
 }
 
 void Cipher::encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const{
