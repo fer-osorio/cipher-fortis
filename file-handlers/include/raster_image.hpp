@@ -10,16 +10,21 @@ public:
     explicit RasterImage(const std::filesystem::path& path);
 
     /**
-     * @brief Loads pixel data via stbi_load and zero-pads to the nearest 16-byte boundary.
-     * @note The original unpadded byte count is stored in pixel_data_size_.
-     *       Image dimensions (width_, height_, channels_) are never modified by padding.
+     * @brief Loads pixel data via stbi_load into the data buffer.
+     * @note Loads exactly width_ * height_ * channels_ bytes. No alignment padding
+     *       is applied. pixel_data_size_ is set to data.size() here and is never
+     *       modified afterwards. Padding is the responsibility of apply_encryption().
      */
     void load() override;
 
     /**
-     * @note Sets PaddingMode::None on the cipher before encrypting (the pixel buffer is
-     *       already block-aligned after load()) and restores PaddingMode::PKCS7 afterwards.
-     *       Has no effect on the padding mode if the encryptor is not a CipherFortis::Cipher.
+     * @note For ECB and CBC, zero-pads the pixel buffer to the nearest 16-byte
+     *       boundary before encrypting, then sets PaddingMode::None so the cipher
+     *       does not add a PKCS7 block. pixel_data_size_ is not modified; the gap
+     *       is recoverable as data.size() - pixel_data_size_ after this call.
+     *       For OFB and CTR, no padding is applied. Restores PaddingMode::PKCS7
+     *       after the call. Has no effect on padding mode if the encryptor is not
+     *       a CipherFortis::Cipher.
      */
     void apply_encryption(const Encryptor& algorithm) override;
 
