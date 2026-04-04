@@ -22,28 +22,25 @@ public:
 };
 
 TEST_F(RasterImageFixture, LoadOperations) {
-    // After load(), data is zero-padded to the nearest 16-byte boundary.
-    // pixel_data_size_ holds the original w*h*ch count.
+    // After load(), data holds exactly w*h*ch bytes — no alignment padding.
+    // pixel_data_size_ equals data.size().
     {
         File::PNG png(validPngPath);
         png.load();
         EXPECT_EQ(static_cast<size_t>(300), png.get_pixel_data_size()) << "10x10 RGB: pixel_data_size_ == 300";
-        EXPECT_EQ(static_cast<size_t>(304), png.get_size()) << "10x10 RGB padded to 304 bytes";
-        EXPECT_EQ(0u, png.get_size() % 16) << "size must be a multiple of 16";
+        EXPECT_EQ(static_cast<size_t>(300), png.get_size()) << "10x10 RGB: size == pixel_data_size_";
     }
     {
         File::PNG png(smallPngPath);
         png.load();
         EXPECT_EQ(static_cast<size_t>(12), png.get_pixel_data_size()) << "2x2 RGB: pixel_data_size_ == 12";
-        EXPECT_EQ(static_cast<size_t>(16), png.get_size()) << "2x2 RGB padded to 16 bytes";
-        EXPECT_EQ(0u, png.get_size() % 16) << "size must be a multiple of 16";
+        EXPECT_EQ(static_cast<size_t>(12), png.get_size()) << "2x2 RGB: size == pixel_data_size_";
     }
     {
         File::PNG png(largePngPath);
         png.load();
         EXPECT_EQ(static_cast<size_t>(30000), png.get_pixel_data_size()) << "100x100 RGB: pixel_data_size_ == 30000";
-        EXPECT_EQ(static_cast<size_t>(30000), png.get_size()) << "100x100 RGB already aligned, no padding";
-        EXPECT_EQ(0u, png.get_size() % 16) << "size must be a multiple of 16";
+        EXPECT_EQ(static_cast<size_t>(30000), png.get_size()) << "100x100 RGB: size == pixel_data_size_";
     }
     EXPECT_THROW({
         File::PNG png(nonexistentPath);
@@ -95,8 +92,8 @@ TEST_F(RasterImageFixture, SaveOperations) {
             << "Save to original path persists the change";
 
         reloaded.apply_decryption(xor_enc);
-        // apply_decryption resizes to pixel_data_size_; compare against the pixel
-        // portion of original (original may contain trailing zero-alignment bytes).
+        // apply_decryption resizes to pixel_data_size_ (== original.size() since
+        // load() no longer pads), so the comparison covers the full original buffer.
         EXPECT_EQ(
             reloaded.get_data(),
             std::vector<uint8_t>(
@@ -215,23 +212,43 @@ TEST_F(RasterImageFixture, JpegLossyRoundTrip) {
 
 // ── Block-alignment and PKCS#7 round-trip ────────────────────────────────────
 
-TEST_F(RasterImageFixture, BlockAlignmentAfterLoad) {
-    // Every supported format must yield a data buffer whose size is a multiple of 16
-    // and a pixel_data_size_ equal to w*h*channels.
-    auto check = [](File::RasterImage& img, size_t expected_pixels, const char* label) {
+TEST_F(RasterImageFixture, BlockAlignmentAfterEncryption) {
+    // After load(), data.size() == pixel_data_size_ (no padding).
+    // After apply_encryption() with ECB/CBC, data.size() is a multiple of 16.
+    CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
+    CipherFortis::Cipher ecb(
+        key,
+        CipherFortis::Cipher::OperationMode(
+            CipherFortis::Cipher::OperationMode::Identifier::ECB
+        )
+    );
+
+    auto check = [&](
+        File::RasterImage& img, size_t expected_pixels, const char* label
+    ) {
         img.load();
-        EXPECT_EQ(img.get_pixel_data_size(), expected_pixels) << label << ": pixel_data_size_";
-        EXPECT_EQ(0u, img.get_size() % 16)                   << label << ": size % 16 == 0";
-        EXPECT_GE(img.get_size(), expected_pixels)            << label << ": size >= pixel count";
+        EXPECT_EQ(img.get_pixel_data_size(), expected_pixels)
+            << label << ": pixel_data_size_ after load";
+        EXPECT_EQ(img.get_size(), expected_pixels)
+            << label << ": size == pixel_data_size_ after load (no padding)";
+
+        img.apply_encryption(ecb);
+        EXPECT_EQ(0u, img.get_size() % 16)
+            << label << ": size is block-aligned after apply_encryption";
+        EXPECT_GE(img.get_size(), expected_pixels)
+            << label << ": size >= pixel_data_size_ after apply_encryption";
     };
 
-    { File::PNG  img(validPngPath);  check(img, 300u,   "10x10 RGB PNG");  }
-    { File::PNG  img(smallPngPath);  check(img, 12u,    "2x2 RGB PNG");    }
+    { File::PNG  img(validPngPath);  check(img, 300u,   "10x10 RGB PNG");   }
+    { File::PNG  img(smallPngPath);  check(img, 12u,    "2x2 RGB PNG");     }
     { File::PNG  img(largePngPath);  check(img, 30000u, "100x100 RGB PNG"); }
     {
         File::JPEG img(validJpegPath);
-        img.load();  // load first to know pixel_data_size_
-        check(img, img.get_pixel_data_size(), "JPEG");
+        img.load();
+        size_t pds = img.get_pixel_data_size();
+        img.apply_encryption(ecb);
+        EXPECT_EQ(0u, img.get_size() % 16) << "JPEG: block-aligned after apply_encryption";
+        EXPECT_GE(img.get_size(), pds)     << "JPEG: size >= pixel_data_size_";
     }
 }
 
@@ -282,7 +299,7 @@ TEST_F(RasterImageFixture, PKCS7RoundTrip_GapNonZero_ECB) {
     File::PNG img(workPath);
     img.load();
     ASSERT_EQ(img.get_pixel_data_size(), 300u);
-    ASSERT_EQ(img.get_size(), 304u) << "zero-padded to 304";
+    ASSERT_EQ(img.get_size(), 300u) << "load() stores exact pixel count, no padding";
 
     std::vector<uint8_t> original_pixels(
         img.get_data().begin(),
@@ -290,6 +307,7 @@ TEST_F(RasterImageFixture, PKCS7RoundTrip_GapNonZero_ECB) {
     );
 
     img.apply_encryption(cipher);
+    ASSERT_EQ(img.get_size(), 304u) << "zero-padded to 304 by apply_encryption";
     size_t pds = img.get_pixel_data_size();
     size_t gap = img.get_size() - pds;
     ASSERT_EQ(gap, 4u);
