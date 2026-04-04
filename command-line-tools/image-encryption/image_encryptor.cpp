@@ -259,7 +259,8 @@ int main(int argc, const char* argv[]) {
 
     config.validate(parser);
     if (!config.is_valid) {
-        std::cerr << "Error: " << config.error_message << "\n";
+        if(!config.error_message.empty())
+            std::cerr << "Error: " << config.error_message << "\n";
         return 1;
     }
 
