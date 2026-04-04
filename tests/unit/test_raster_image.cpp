@@ -266,6 +266,54 @@ TEST_F(RasterImageFixture, PKCS7RoundTrip_ECB) {
     fs::remove(workPath);
 }
 
+TEST_F(RasterImageFixture, PKCS7RoundTrip_GapNonZero_ECB) {
+    // validPngPath is 10×10 RGB = 300 bytes (gap = 4)
+    CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
+    CipherFortis::Cipher cipher(
+        key,
+        CipherFortis::Cipher::OperationMode(
+             CipherFortis::Cipher::OperationMode::Identifier::ECB
+         )
+     );
+
+    fs::path workPath = testDataDir / "gap_ecb_roundtrip.png";
+    fs::copy_file(validPngPath, workPath, fs::copy_options::overwrite_existing);
+
+    File::PNG img(workPath);
+    img.load();
+    ASSERT_EQ(img.get_pixel_data_size(), 300u);
+    ASSERT_EQ(img.get_size(), 304u) << "zero-padded to 304";
+
+    std::vector<uint8_t> original_pixels(
+        img.get_data().begin(),
+        img.get_data().begin() + static_cast<std::ptrdiff_t>(img.get_pixel_data_size())
+    );
+
+    img.apply_encryption(cipher);
+    size_t pds = img.get_pixel_data_size();
+    size_t gap = img.get_size() - pds;
+    ASSERT_EQ(gap, 4u);
+    std::vector<uint8_t> tail(
+        img.get_data().end() - static_cast<std::ptrdiff_t>(gap),
+        img.get_data().end()
+    );
+
+    img.save(workPath);   // tail bytes are dropped by stbi_write
+
+    File::PNG reloaded(workPath);
+    reloaded.load();
+    EXPECT_EQ(reloaded.get_size(), 300u) << "loaded encrypted file has no tail";
+
+    reloaded.append_data(tail);  // restore the dropped tail
+    EXPECT_EQ(reloaded.get_size(), 304u) << "after tail restore, size matches ciphertext";
+
+    reloaded.apply_decryption(cipher);
+    EXPECT_EQ(reloaded.get_data(), original_pixels)
+        << "gap>0 ECB round-trip must recover original pixels";
+
+    fs::remove(workPath);
+}
+
 TEST_F(RasterImageFixture, PKCS7RoundTrip_CBC) {
     CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
     CipherFortis::Cipher cipher(
