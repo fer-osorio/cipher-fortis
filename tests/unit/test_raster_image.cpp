@@ -252,13 +252,15 @@ TEST_F(RasterImageFixture, BlockAlignmentAfterEncryption) {
     }
 }
 
-TEST_F(RasterImageFixture, PKCS7RoundTrip_ECB) {
+TEST_F(RasterImageFixture, RoundTrip_ECB) {
     CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
     CipherFortis::Cipher cipher(
-        key, CipherFortis::Cipher::OperationMode(
-                CipherFortis::Cipher::OperationMode::Identifier::ECB
-             )
-     );
+        key,
+        CipherFortis::Cipher::OperationMode(
+            CipherFortis::Cipher::OperationMode::Identifier::ECB
+        ),
+        CipherFortis::Cipher::PaddingMode::None
+    );
 
     fs::path workPath = testDataDir / "ecb_roundtrip.png";
     fs::copy_file(largePngPath, workPath, fs::copy_options::overwrite_existing);
@@ -283,15 +285,16 @@ TEST_F(RasterImageFixture, PKCS7RoundTrip_ECB) {
     fs::remove(workPath);
 }
 
-TEST_F(RasterImageFixture, PKCS7RoundTrip_GapNonZero_ECB) {
+TEST_F(RasterImageFixture, RoundTrip_GapNonZero_ECB) {
     // validPngPath is 10×10 RGB = 300 bytes (gap = 4)
     CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
     CipherFortis::Cipher cipher(
         key,
         CipherFortis::Cipher::OperationMode(
-             CipherFortis::Cipher::OperationMode::Identifier::ECB
-         )
-     );
+            CipherFortis::Cipher::OperationMode::Identifier::ECB
+        ),
+        CipherFortis::Cipher::PaddingMode::None
+    );
 
     fs::path workPath = testDataDir / "gap_ecb_roundtrip.png";
     fs::copy_file(validPngPath, workPath, fs::copy_options::overwrite_existing);
@@ -332,14 +335,15 @@ TEST_F(RasterImageFixture, PKCS7RoundTrip_GapNonZero_ECB) {
     fs::remove(workPath);
 }
 
-TEST_F(RasterImageFixture, PKCS7RoundTrip_CBC) {
+TEST_F(RasterImageFixture, RoundTrip_CBC) {
     CipherFortis::Key key(CipherFortis::Key::LengthBits::_128);
     CipherFortis::Cipher cipher(
         key,
         CipherFortis::Cipher::OperationMode(
-             CipherFortis::Cipher::OperationMode::Identifier::CBC
-         )
-     );
+            CipherFortis::Cipher::OperationMode::Identifier::CBC
+        ),
+        CipherFortis::Cipher::PaddingMode::None
+    );
     cipher.setInitialVectorForTesting(std::vector<uint8_t>(16, 0x5A));
 
     fs::path workPath = testDataDir / "cbc_roundtrip.png";
