@@ -324,11 +324,9 @@ TEST(Cipher_PKCS7, AES256_CBC) { test_pkcs7_round_trip(AESKEY_LENBITS::_256, AES
 
 void test_padding_mode_none(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
     AESKEY key(ks);
-    AESCIPHER ciph(key, AESCIPHER::OperationMode(cm));
+    AESCIPHER ciph(key, AESCIPHER::OperationMode(cm), AESCIPHER::PaddingMode::None);
     if (cm == AESCIPHER_OPTMODE::CBC)
         ciph.setInitialVectorForTesting(std::vector<uint8_t>(16, 0x00));
-
-    ciph.set_padding_mode(AESCIPHER::PaddingMode::None);
 
     // Non-aligned input must throw
     std::vector<uint8_t> unaligned(15);
