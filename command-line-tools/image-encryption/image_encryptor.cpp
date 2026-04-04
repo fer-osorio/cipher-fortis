@@ -303,7 +303,11 @@ int main(int argc, const char* argv[]) {
         }
 
         std::unique_ptr<FileBase> image = make_image(config.input_file);
-        Cipher cipher(key, optmode);
+        auto* raster = dynamic_cast<RasterImage*>(image.get());
+        Cipher::PaddingMode padding = raster
+            ? Cipher::PaddingMode::None
+            : Cipher::PaddingMode::PKCS7;
+        Cipher cipher(key, optmode, padding);
         image->load();
 
         // Restore alignment tail for gap > 0 raster images (decrypt path)
@@ -322,7 +326,6 @@ int main(int argc, const char* argv[]) {
             // Capture alignment tail for gap > 0 raster images (encrypt path)
             size_t raster_pixel_data_size = 0;
             std::string tail_hex_out;
-            auto* raster = dynamic_cast<File::RasterImage*>(image.get());
             if (raster) {
                 raster_pixel_data_size = raster->get_pixel_data_size();
                 size_t gap = image->get_size() - raster_pixel_data_size;
