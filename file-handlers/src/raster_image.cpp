@@ -26,9 +26,6 @@ void RasterImage::load() {
     this->data.assign(pixels, pixels + w * h * ch);
     stbi_image_free(pixels);
     pixel_data_size_ = this->data.size();
-    size_t gap = CipherFortis::Padding::alignment_gap(pixel_data_size_, kAesBlockSize);
-    if (gap > 0)
-        this->data.insert(this->data.end(), gap, static_cast<uint8_t>(0));
 }
 
 size_t RasterImage::get_pixel_data_size() const {
@@ -40,7 +37,20 @@ void RasterImage::apply_encryption(const Encryptor& algorithm) {
     auto* cipher = dynamic_cast<CipherFortis::Cipher*>(
         const_cast<Encryptor*>(&algorithm)
     );
-    if (cipher) cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::None);
+    if (cipher) {
+        using ID = CipherFortis::Cipher::OperationMode::Identifier;
+        ID mode = cipher->getOptModeID();
+        bool needs_alignment =
+            (mode == ID::ECB || mode == ID::CBC);
+        if (needs_alignment) {
+            size_t gap = CipherFortis::Padding::alignment_gap(
+                pixel_data_size_, kAesBlockSize
+            );
+            if (gap > 0)
+                this->data.insert(this->data.end(), gap, static_cast<uint8_t>(0));
+        }
+        cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::None);
+    }
     FileBase::apply_encryption(algorithm);
     if (cipher) cipher->set_padding_mode(CipherFortis::Cipher::PaddingMode::PKCS7);
 }
