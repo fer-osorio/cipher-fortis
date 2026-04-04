@@ -294,11 +294,6 @@ int main(int argc, const char* argv[]) {
 
         if (!config.iv_hex.empty()) {
             optmode.setInitialVector(parse_hex_iv(config.iv_hex));
-        } else if (mode_needs_iv(config.operation_mode)) {
-            // Auto-generated IV: print it so the user can reuse it for decryption
-            const uint8_t* iv_ptr = optmode.getIVpointerData();
-            std::cout << "Generated IV (save for decryption): "
-                      << bytes_to_hex(iv_ptr, 16) << "\n";
         }
 
         if (!config.decrypt && image_is_lossy(config.input_file)) {
@@ -359,6 +354,24 @@ int main(int argc, const char* argv[]) {
                     raster_pixel_data_size,
                     tail_hex_out
                 );
+            } else {
+                // No sidecar file: print full metadata to stdout so the user
+                // has everything needed to decrypt later.
+                std::cout
+                    << "Mode: "
+                    << Cipher::OperationMode::identifier_to_string(
+                           config.operation_mode
+                       )
+                    << "\n";
+                if (mode_needs_iv(config.operation_mode))
+                    std::cout << "IV: "
+                              << bytes_to_hex(optmode.getIVpointerData(), 16)
+                              << "\n";
+                if (!tail_hex_out.empty()) {
+                    std::cout << "Pixel data size: "
+                              << raster_pixel_data_size << "\n";
+                    std::cout << "Tail: " << tail_hex_out << "\n";
+                }
             }
             return 0;
         }
