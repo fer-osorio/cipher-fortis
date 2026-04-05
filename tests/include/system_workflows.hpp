@@ -69,6 +69,9 @@ public:
 
 	// SYSTEM TEST 5: Metadata round-trip (encrypt with --metadata, decrypt with --metadata)
 	bool test_metadata_round_trip();
+
+	// SYSTEM TEST 6: Encrypted and decrypted files are valid loadable images
+	bool test_file_validity();
 }; // class SystemTests
 
 } // namespace CommandLineToolsTest
