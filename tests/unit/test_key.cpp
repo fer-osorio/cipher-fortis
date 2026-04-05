@@ -179,9 +179,7 @@ void test_key_save_and_load(AESKEYLEN keyLenBits) {
 }
 
 void test_key_load_errors(AESKEYLEN keyLenBits) {
-    KeyhppTest keytest(keyLenBits);
-    size_t keyLengthBytes = static_cast<size_t>(keyLenBits)/8;
-
+    // Non-existent file must throw.
     try {
         CipherFortis::Key key("non_existent_file.bin");
         FAIL() << "Loading from non-existent file should throw exception";
@@ -189,55 +187,20 @@ void test_key_load_errors(AESKEYLEN keyLenBits) {
         // expected
     }
 
-    const char* wrong_header_file = "wrong_header.bin";
+    // File whose size is not 16, 24, or 32 bytes must throw.
+    const char* wrong_size_file = "wrong_size.bin";
     {
-        std::ofstream ofs1(wrong_header_file, std::ios::binary);
-        ofs1.write("WRONG!", 6);
-        uint16_t valid_len = static_cast<uint16_t>(keytest.getKeyLenBits());
-        ofs1.write(reinterpret_cast<char*>(&valid_len), 2);
-        uint8_t dummy_key[32] = {0};
-        ofs1.write(reinterpret_cast<char*>(dummy_key), keyLengthBytes);
+        std::ofstream ofs(wrong_size_file, std::ios::binary);
+        uint8_t dummy[10] = {0};
+        ofs.write(reinterpret_cast<char*>(dummy), sizeof(dummy));
     }
     try {
-        CipherFortis::Key key(wrong_header_file);
-        FAIL() << "Loading file with wrong header should throw exception";
+        CipherFortis::Key key(wrong_size_file);
+        FAIL() << "Loading file with invalid size should throw exception";
     } catch (const std::exception&) {
         // expected
     }
-    std::remove(wrong_header_file);
-
-    const char* invalid_length_file = "invalid_length.bin";
-    {
-        std::ofstream ofs2(invalid_length_file, std::ios::binary);
-        ofs2.write("AESKEY", 6);
-        uint16_t invalid_len = 512;
-        ofs2.write(reinterpret_cast<char*>(&invalid_len), 2);
-        uint8_t dummy_key[32] = {0};
-        ofs2.write(reinterpret_cast<char*>(dummy_key), keyLengthBytes);
-    }
-    try {
-        CipherFortis::Key key(invalid_length_file);
-        FAIL() << "Loading file with invalid key length should throw exception";
-    } catch (const std::exception&) {
-        // expected
-    }
-    std::remove(invalid_length_file);
-
-    const char* truncated_file = "truncated.bin";
-    {
-        std::ofstream ofs3(truncated_file, std::ios::binary);
-        ofs3.write("AESKEY", 6);
-        uint16_t key_len = static_cast<uint16_t>(keytest.getKeyLenBits());
-        ofs3.write(reinterpret_cast<char*>(&key_len), 2);
-        uint8_t dummy_key[32] = {0};
-        ofs3.write(reinterpret_cast<char*>(dummy_key), 8);
-    }
-    try {
-        CipherFortis::Key key(truncated_file);
-    } catch (const std::exception&) {
-        // acceptable — truncated file may or may not throw
-    }
-    std::remove(truncated_file);
+    std::remove(wrong_size_file);
 }
 
 void test_key_memory_management(AESKEYLEN keyLenBits) {
