@@ -29,3 +29,8 @@ TEST(SystemTest, MetadataRoundTrip) {
     cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
     EXPECT_TRUE(st.test_metadata_round_trip());
 }
+
+TEST(SystemTest, FileValidityAfterEncryptDecrypt) {
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    EXPECT_TRUE(st.test_file_validity());
+}

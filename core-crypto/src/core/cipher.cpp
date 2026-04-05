@@ -3,6 +3,7 @@
 #include"../../aes/include/operation_modes.h"
 #include"../../include/cipher.hpp"
 #include"../utils/print_bytes.hpp"
+#include"../utils/padding.hpp"
 #include<cstring>
 #include<chrono>
 #include<fstream>
@@ -311,16 +312,21 @@ Cipher::Cipher(): config(OperationMode(OperationMode::Identifier::ECB), Key::Len
     for(size_t i = 0; i < keyExpLen; i++) this->keyExpansion[i] = 0;            // -Building key expansion with zeros
 }
 
-Cipher::Cipher(const Key::LengthBits lenBits, const OperationMode::Identifier optModeID):
-    config(OperationMode(optModeID), lenBits) {
+Cipher::Cipher(
+    const Key::LengthBits lenBits,
+    const OperationMode::Identifier optModeID,
+    PaddingMode padding_mode
+): config(OperationMode(optModeID), lenBits), padding_mode_(padding_mode) {
     this->buildKeyExpansion();
 }
 
-Cipher::Cipher(const Key& k, const OperationMode& optMode): key(k), config(optMode,k.getLenBits()) {
+Cipher::Cipher(const Key& k, const OperationMode& optMode, PaddingMode padding_mode)
+    : key(k), config(optMode, k.getLenBits()), padding_mode_(padding_mode) {
     this->buildKeyExpansion();
 }
 
-Cipher::Cipher(const Cipher& c): key(c.key), config(c.config) {
+Cipher::Cipher(const Cipher& c)
+    : key(c.key), config(c.config), padding_mode_(c.padding_mode_) {
     size_t keyExpLen = c.config.getKeyExpansionLengthBytes();
     this->keyExpansion = new uint8_t[keyExpLen];
     for(size_t i = 0; i < keyExpLen; i++) this->keyExpansion[i] = c.keyExpansion[i];
@@ -341,6 +347,7 @@ Cipher& Cipher::operator = (const Cipher& c) {
         }
         std::memcpy(this->keyExpansion, c.keyExpansion, ckeyExpLen);
         this->config = c.config;
+        this->padding_mode_ = c.padding_mode_;
     }
     return *this;
 }
@@ -568,52 +575,80 @@ void Cipher::decrypt(const uint8_t*const data, size_t size, uint8_t*const output
     }
 }
 
-void Cipher::encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const{
-    if (input.empty()) {
-        throw std::invalid_argument("Input data vector cannot be empty");
-    }
+bool Cipher::requires_block_alignment() const {
+    using ID = OperationMode::Identifier;
+    ID mode = this->config.getOperationModeID();
+    return (mode == ID::ECB || mode == ID::CBC)
+        && this->padding_mode_ == PaddingMode::None;
+}
 
-    if (output.empty()) {
-        throw std::invalid_argument("Output data vector cannot be empty");
-    }
-    if(output.size() < input.size()){
-        throw std::invalid_argument(
-            "In member function Cipher::encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output): "
-            "output vector size most be bigger or equal than input vector size"
-        );
-    }
-    if(input.size() < BLOCK_SIZE){
-        throw std::invalid_argument("Input size must be at least one block size");
-    }
-    try{
+void Cipher::encryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const{
+    if (input.empty())
+        throw std::invalid_argument("Input data vector cannot be empty");
+
+    OperationMode::Identifier mode = this->config.getOperationModeID();
+
+    if (mode == OperationMode::Identifier::ECB || mode == OperationMode::Identifier::CBC) {
+        if (this->padding_mode_ == PaddingMode::PKCS7) {
+            std::vector<uint8_t> padded = pkcs7_pad(input);
+            output.resize(padded.size());
+            this->encrypt(padded.data(), padded.size(), output.data());
+        } else {
+            // PaddingMode::None — caller guarantees block alignment
+            if (input.size() % BLOCK_SIZE != 0)
+                throw std::invalid_argument(
+                    "Cipher::encryption: input size must be a multiple of BLOCK_SIZE "
+                    "when PaddingMode::None is set");
+            output.resize(input.size());
+            this->encrypt(input.data(), input.size(), output.data());
+        }
+    } else {
+        // OFB / CTR — existing behaviour unchanged
+        if (output.empty())
+            throw std::invalid_argument("Output data vector cannot be empty");
+        if (output.size() < input.size())
+            throw std::invalid_argument(
+                "In member function Cipher::encryption(...): "
+                "output vector size most be bigger or equal than input vector size");
+        if (input.size() < BLOCK_SIZE)
+            throw std::invalid_argument("Input size must be at least one block size");
         this->encrypt(input.data(), input.size(), output.data());
-    } catch(...){
-        throw;
     }
 }
 
 void Cipher::decryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output) const{
-    // Validate inputs (same validation as encryption)
-    if (input.empty()) {
+    if (input.empty())
         throw std::invalid_argument("Input data vector cannot be empty");
-    }
 
-    if (output.empty()) {
-        throw std::invalid_argument("Output data vector cannot be empty");
-    }
-    if(output.size() < input.size()){
-        throw std::invalid_argument(
-            "In member function Cipher::decryption(const std::vector<uint8_t>& input, std::vector<uint8_t>& output):"
-            "output vector size most be bigger or equal than input vector size"
-        );
-    }
-    if(input.size() < BLOCK_SIZE){
-        throw std::invalid_argument("Input size must be at least one block size");
-    }
-    try{
+    OperationMode::Identifier mode = this->config.getOperationModeID();
+
+    if (mode == OperationMode::Identifier::ECB || mode == OperationMode::Identifier::CBC) {
+        if (this->padding_mode_ == PaddingMode::PKCS7) {
+            // pkcs7_unpad validates block alignment and padding bytes; propagate its exception
+            std::vector<uint8_t> temp(input.size());
+            this->decrypt(input.data(), input.size(), temp.data());
+            std::vector<uint8_t> unpadded = pkcs7_unpad(temp);
+            output = std::move(unpadded);
+        } else {
+            // PaddingMode::None — caller guarantees block alignment; no unpadding
+            if (input.size() % BLOCK_SIZE != 0)
+                throw std::invalid_argument(
+                    "Cipher::decryption: input size must be a multiple of BLOCK_SIZE "
+                    "when PaddingMode::None is set");
+            output.resize(input.size());
+            this->decrypt(input.data(), input.size(), output.data());
+        }
+    } else {
+        // OFB / CTR — existing behaviour unchanged
+        if (output.empty())
+            throw std::invalid_argument("Output data vector cannot be empty");
+        if (output.size() < input.size())
+            throw std::invalid_argument(
+                "In member function Cipher::decryption(...): "
+                "output vector size most be bigger or equal than input vector size");
+        if (input.size() < BLOCK_SIZE)
+            throw std::invalid_argument("Input size must be at least one block size");
         this->decrypt(input.data(), input.size(), output.data());
-    } catch(...){
-        throw;
     }
 }
 
@@ -651,4 +686,26 @@ const uint8_t* Cipher::getInitialVectorForTesting() const{
 
 bool Cipher::setInitialVectorForTesting(const std::vector<uint8_t>& source){
     return this->config.setInitialVector(source);
+}
+
+std::vector<uint8_t> Cipher::pkcs7_pad(const std::vector<uint8_t>& input) {
+    size_t pad_len = Padding::pkcs7_pad_length(input.size(), BLOCK_SIZE);
+    std::vector<uint8_t> padded(input);
+    padded.insert(padded.end(), pad_len, static_cast<uint8_t>(pad_len));
+    return padded;
+}
+
+std::vector<uint8_t> Cipher::pkcs7_unpad(const std::vector<uint8_t>& padded) {
+    if (padded.empty() || padded.size() % BLOCK_SIZE != 0)
+        throw std::invalid_argument("pkcs7_unpad: input size is not a positive multiple of BLOCK_SIZE");
+    uint8_t pad_val = padded.back();
+    if (pad_val == 0 || pad_val > BLOCK_SIZE)
+        throw std::invalid_argument(
+            "pkcs7_unpad: invalid padding byte value [pad_val = "
+            + std::to_string(static_cast<uint32_t>(pad_val)) + "]"
+        );
+    for (size_t i = padded.size() - pad_val; i < padded.size(); ++i)
+        if (padded[i] != pad_val)
+            throw std::invalid_argument("pkcs7_unpad: inconsistent padding bytes");
+    return std::vector<uint8_t>(padded.begin(), padded.end() - pad_val);
 }

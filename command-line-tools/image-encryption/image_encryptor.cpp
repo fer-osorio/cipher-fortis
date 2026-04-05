@@ -23,6 +23,7 @@
 
 #include "../../core-crypto/include/cipher.hpp"
 #include "../../file-handlers/include/image_factory.hpp"
+#include "../../file-handlers/include/raster_image.hpp"
 #include "../../cli-tools/include/cli_config.hpp"
 
 #include <fstream>
@@ -59,6 +60,22 @@ static std::string bytes_to_hex(const uint8_t* data, size_t len) {
         oss << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
             << static_cast<unsigned>(data[i]);
     return oss.str();
+}
+
+static std::vector<uint8_t> hex_decode(const std::string& hex) {
+    if (hex.size() % 2 != 0)
+        throw std::invalid_argument("hex_decode: odd-length hex string");
+    std::vector<uint8_t> out(hex.size() / 2);
+    for (size_t i = 0; i < out.size(); ++i) {
+        unsigned int byte;
+        std::istringstream ss(hex.substr(i * 2, 2));
+        if (!(ss >> std::hex >> byte))
+            throw std::invalid_argument(
+                "hex_decode: invalid hex byte at position " + std::to_string(i)
+            );
+        out[i] = static_cast<uint8_t>(byte);
+    }
+    return out;
 }
 
 static bool mode_needs_iv(Cipher::OperationMode::Identifier m) {
@@ -163,8 +180,14 @@ void ImageCryptoConfig::print_help(const CLIConfig::ArgumentParser& parser) cons
         << "  --iv <32 hex chars>        16-byte IV as 32 hex characters (CBC/OFB/CTR);\n"
         << "                             if omitted on encrypt, a random IV is generated\n"
         << "                             and printed to stdout\n"
-        << "  --metadata <file>          JSON file to save IV+mode on encrypt,\n"
-        << "                             or load IV+mode on decrypt (replaces --iv)\n"
+        << "  --metadata <file>          JSON file to save/load encryption metadata.\n"
+        << "                             On encrypt: always stores mode and IV\n"
+        << "                             (CBC/OFB/CTR). For ECB/CBC raster images\n"
+        << "                             also stores pixel_data_size and tail\n"
+        << "                             (alignment bytes dropped by the image\n"
+        << "                             writer — required for lossless decryption).\n"
+        << "                             On decrypt: loads these fields; --iv is\n"
+        << "                             overridden by the file's value.\n"
         << "  --help                     Show this help message\n\n"
         << "Notes:\n"
         << "  BMP and PNG support lossless round-trips (encrypt then decrypt\n"
@@ -174,23 +197,33 @@ void ImageCryptoConfig::print_help(const CLIConfig::ArgumentParser& parser) cons
 
 // ── Metadata helpers ──────────────────────────────────────────────────────────
 
-static void write_metadata(const std::string& path,
-                            const std::string& mode, const std::string& iv_hex) {
+static void write_metadata(
+    const std::string& path,
+    const std::string& mode, const std::string& iv_hex,
+    size_t pixel_data_size = 0, const std::string& tail_hex = ""
+) {
     std::ofstream f(path);
     if (!f) throw std::runtime_error("Cannot open metadata file for writing: " + path);
     f << "{\n  \"mode\": \"" << mode << "\"";
     if (!iv_hex.empty())
         f << ",\n  \"iv\": \"" << iv_hex << "\"";
+    if (pixel_data_size > 0)
+        f << ",\n  \"pixel_data_size\": " << pixel_data_size;
+    if (!tail_hex.empty())
+        f << ",\n  \"tail\": \"" << tail_hex << "\"";
     f << "\n}\n";
 }
 
-static void read_metadata(const std::string& path,
-                           std::string& mode, std::string& iv_hex) {
+static void read_metadata(
+    const std::string& path,
+    std::string& mode, std::string& iv_hex,
+    size_t& pixel_data_size, std::string& tail_hex
+) {
     std::ifstream f(path);
     if (!f) throw std::runtime_error("Cannot open metadata file: " + path);
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
-    auto extract = [&](const std::string& key) -> std::string {
+    auto extract_str = [&](const std::string& key) -> std::string {
         std::string search = "\"" + key + "\": \"";
         auto pos = content.find(search);
         if (pos == std::string::npos) return "";
@@ -198,8 +231,17 @@ static void read_metadata(const std::string& path,
         auto end = content.find("\"", pos);
         return (end != std::string::npos) ? content.substr(pos, end - pos) : "";
     };
-    mode   = extract("mode");
-    iv_hex = extract("iv");
+    auto extract_uint = [&](const std::string& key) -> size_t {
+        std::string search = "\"" + key + "\": ";
+        auto pos = content.find(search);
+        if (pos == std::string::npos) return 0;
+        pos += search.size();
+        return static_cast<size_t>(std::stoull(content.substr(pos)));
+    };
+    mode            = extract_str("mode");
+    iv_hex          = extract_str("iv");
+    pixel_data_size = extract_uint("pixel_data_size");
+    tail_hex        = extract_str("tail");
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -217,7 +259,8 @@ int main(int argc, const char* argv[]) {
 
     config.validate(parser);
     if (!config.is_valid) {
-        std::cerr << "Error: " << config.error_message << "\n";
+        if(!config.error_message.empty())
+            std::cerr << "Error: " << config.error_message << "\n";
         return 1;
     }
 
@@ -233,9 +276,14 @@ int main(int argc, const char* argv[]) {
         // ── Encrypt / Decrypt ─────────────────────────────────────────────────
 
         // Load metadata before optmode creation so mode/IV override takes effect
+        size_t meta_pixel_data_size = 0;
+        std::string meta_tail_hex;
         if (config.decrypt && !config.metadata_file.empty()) {
             std::string mode_str, iv_from_meta;
-            read_metadata(config.metadata_file, mode_str, iv_from_meta);
+            read_metadata(
+                config.metadata_file, mode_str, iv_from_meta,
+                meta_pixel_data_size, meta_tail_hex
+            );
             if (!mode_str.empty())
                 config.operation_mode = Cipher::OperationMode::string_to_identifier(mode_str);
             if (config.iv_hex.empty())
@@ -247,23 +295,28 @@ int main(int argc, const char* argv[]) {
 
         if (!config.iv_hex.empty()) {
             optmode.setInitialVector(parse_hex_iv(config.iv_hex));
-        } else if (mode_needs_iv(config.operation_mode)) {
-            // Auto-generated IV: print it so the user can reuse it for decryption
-            const uint8_t* iv_ptr = optmode.getIVpointerData();
-            std::cout << "Generated IV (save for decryption): "
-                      << bytes_to_hex(iv_ptr, 16) << "\n";
         }
 
         if (!config.decrypt && image_is_lossy(config.input_file)) {
-            config.output_file = std::filesystem::path(config.output_file)
-                                     .replace_extension(".png").string();
+            config.output_file =
+                std::filesystem::path(config.output_file).replace_extension(".png").string();
             std::cout << "Note: JPEG input will be saved as PNG to preserve encrypted pixels.\n"
                       << "      Output: " << config.output_file << "\n";
         }
 
         std::unique_ptr<FileBase> image = make_image(config.input_file);
-        Cipher cipher(key, optmode);
+        auto* raster = dynamic_cast<RasterImage*>(image.get());
+        Cipher::PaddingMode padding = raster
+            ? Cipher::PaddingMode::None
+            : Cipher::PaddingMode::PKCS7;
+        Cipher cipher(key, optmode, padding);
         image->load();
+
+        // Restore alignment tail for gap > 0 raster images (decrypt path)
+        if (config.decrypt && !meta_tail_hex.empty()) {
+            std::vector<uint8_t> tail = hex_decode(meta_tail_hex);
+            image->append_data(tail);
+        }
 
         if (config.decrypt) {
             image->apply_decryption(cipher);
@@ -271,20 +324,60 @@ int main(int argc, const char* argv[]) {
                       << " -> "        << config.output_file << "\n";
         } else {
             image->apply_encryption(cipher);
+
+            // Capture alignment tail for gap > 0 raster images (encrypt path)
+            size_t raster_pixel_data_size = 0;
+            std::string tail_hex_out;
+            if (raster) {
+                raster_pixel_data_size = raster->get_pixel_data_size();
+                size_t gap = image->get_size() - raster_pixel_data_size;
+                if (gap > 0) {
+                    const auto& d = image->get_data();
+                    tail_hex_out = bytes_to_hex(
+                        d.data() + raster_pixel_data_size, gap
+                    );
+                }
+            }
+
             std::cout << "Encrypted: " << config.input_file
                       << " -> "        << config.output_file << "\n";
+
+            image->save(config.output_file);
+
+            if (!config.metadata_file.empty()) {
+                std::string iv_hex_out;
+                if (mode_needs_iv(config.operation_mode))
+                    iv_hex_out = bytes_to_hex(optmode.getIVpointerData(), 16);
+                write_metadata(
+                    config.metadata_file,
+                    Cipher::OperationMode::identifier_to_string(config.operation_mode),
+                    iv_hex_out,
+                    raster_pixel_data_size,
+                    tail_hex_out
+                );
+            } else {
+                // No sidecar file: print full metadata to stdout so the user
+                // has everything needed to decrypt later.
+                std::cout
+                    << "Mode: "
+                    << Cipher::OperationMode::identifier_to_string(
+                           config.operation_mode
+                       )
+                    << "\n";
+                if (mode_needs_iv(config.operation_mode))
+                    std::cout << "IV: "
+                              << bytes_to_hex(optmode.getIVpointerData(), 16)
+                              << "\n";
+                if (!tail_hex_out.empty()) {
+                    std::cout << "Pixel data size: "
+                              << raster_pixel_data_size << "\n";
+                    std::cout << "Tail: " << tail_hex_out << "\n";
+                }
+            }
+            return 0;
         }
 
         image->save(config.output_file);
-
-        if (!config.decrypt && !config.metadata_file.empty()) {
-            std::string iv_hex_out;
-            if (mode_needs_iv(config.operation_mode))
-                iv_hex_out = bytes_to_hex(optmode.getIVpointerData(), 16);
-            write_metadata(config.metadata_file,
-                           Cipher::OperationMode::identifier_to_string(config.operation_mode),
-                           iv_hex_out);
-        }
 
     } catch (const std::invalid_argument& e) {
         std::cerr << "Error: " << e.what() << "\n";

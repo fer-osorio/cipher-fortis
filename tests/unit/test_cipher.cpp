@@ -72,6 +72,8 @@ void test_empty_vector_exceptions(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
     AESKEY key(ks);
     AESCIPHER cipher(key, AESCIPHER::OperationMode(cm));
 
+    bool block_mode = (cm == AESCIPHER_OPTMODE::ECB || cm == AESCIPHER_OPTMODE::CBC);
+
     std::vector<uint8_t> input(SP::kDataSize);
     std::vector<uint8_t> output(SP::kDataSize);
     std::vector<uint8_t> empty(0);
@@ -86,14 +88,17 @@ void test_empty_vector_exceptions(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
         FAIL() << "Wrong exception type: " << e.what();
     }
 
-    try {
-        cipher.decryption(input, empty);
-        FAIL() << "Should throw exception for empty output vector";
-    } catch (const std::invalid_argument& e) {
-        EXPECT_NE(std::string(e.what()).find("Output data vector cannot be empty"), std::string::npos)
-            << "Should mention empty output in error message";
-    } catch (const std::exception& e) {
-        FAIL() << "Wrong exception type: " << e.what();
+    // ECB/CBC manage output themselves (resize via PKCS#7); empty-output check only applies to OFB/CTR
+    if (!block_mode) {
+        try {
+            cipher.decryption(input, empty);
+            FAIL() << "Should throw exception for empty output vector";
+        } catch (const std::invalid_argument& e) {
+            EXPECT_NE(std::string(e.what()).find("Output data vector cannot be empty"), std::string::npos)
+                << "Should mention empty output in error message";
+        } catch (const std::exception& e) {
+            FAIL() << "Wrong exception type: " << e.what();
+        }
     }
 
     try {
@@ -106,14 +111,16 @@ void test_empty_vector_exceptions(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
         FAIL() << "Wrong exception type: " << e.what();
     }
 
-    try {
-        cipher.decryption(input, empty);
-        FAIL() << "Should throw exception for empty output vector";
-    } catch (const std::invalid_argument& e) {
-        EXPECT_NE(std::string(e.what()).find("Output data vector cannot be empty"), std::string::npos)
-            << "Should mention empty output in error message";
-    } catch (const std::exception& e) {
-        FAIL() << "Wrong exception type: " << e.what();
+    if (!block_mode) {
+        try {
+            cipher.decryption(input, empty);
+            FAIL() << "Should throw exception for empty output vector";
+        } catch (const std::invalid_argument& e) {
+            EXPECT_NE(std::string(e.what()).find("Output data vector cannot be empty"), std::string::npos)
+                << "Should mention empty output in error message";
+        } catch (const std::exception& e) {
+            FAIL() << "Wrong exception type: " << e.what();
+        }
     }
 }
 
@@ -121,27 +128,18 @@ void test_invalid_size_exceptions(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
     AESKEY key(ks);
     AESCIPHER cipher(key, AESCIPHER::OperationMode(cm));
 
-    std::vector<uint8_t> invalid_input(15);
+    bool block_mode = (cm == AESCIPHER_OPTMODE::ECB || cm == AESCIPHER_OPTMODE::CBC);
+
+    std::vector<uint8_t> small_input(15);
     std::vector<uint8_t> output(SP::kDataSize);
 
-    try {
-        cipher.encryption(invalid_input, output);
-        FAIL() << "Should throw exception for non-valid size";
-    } catch (const std::invalid_argument& e) {
-        EXPECT_NE(std::string(e.what()).find("must be at least one block size"), std::string::npos)
-            << "Should mention block size condition in error message";
-    } catch (const std::exception& e) {
-        FAIL() << "Wrong exception type: " << e.what();
-    }
-
-    try {
-        cipher.decryption(invalid_input, output);
-        FAIL() << "Decryption should throw exception for non-valid size";
-    } catch (const std::invalid_argument& e) {
-        EXPECT_NE(std::string(e.what()).find("must be at least one block size"), std::string::npos)
-            << "Should mention block size condition in error message";
-    } catch (const std::exception& e) {
-        FAIL() << "Wrong exception type: " << e.what();
+    if (block_mode) {
+        // ECB/CBC accept non-aligned input via PKCS#7 — must NOT throw
+        EXPECT_NO_THROW(cipher.encryption(small_input, output));
+    } else {
+        // OFB/CTR still reject sub-block input
+        EXPECT_THROW(cipher.encryption(small_input, output), std::invalid_argument);
+        EXPECT_THROW(cipher.decryption(small_input, output), std::invalid_argument);
     }
 }
 
@@ -271,3 +269,84 @@ TEST(CipherTest, AES256_CTR) {
 TEST(CipherCBCIVHandling, AES128) { test_cbc_mode_iv_handling(AESKEY_LENBITS::_128); }
 TEST(CipherCBCIVHandling, AES192) { test_cbc_mode_iv_handling(AESKEY_LENBITS::_192); }
 TEST(CipherCBCIVHandling, AES256) { test_cbc_mode_iv_handling(AESKEY_LENBITS::_256); }
+
+// ── PKCS#7 round-trip tests (ECB/CBC × 3 key sizes) ─────────────────────────
+
+void test_pkcs7_round_trip(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
+    TV::KeySize ks_;
+    switch(ks) {
+        case AESKEY_LENBITS::_128: ks_ = TV::KeySize::AES128; break;
+        case AESKEY_LENBITS::_192: ks_ = TV::KeySize::AES192; break;
+        case AESKEY_LENBITS::_256: ks_ = TV::KeySize::AES256; break;
+        default: GTEST_FAIL() << "Unknown key size"; return;
+    }
+
+    TV::CipherMode cm_;
+    switch(cm) {
+        case AESCIPHER_OPTMODE::ECB: cm_ = TV::CipherMode::ECB; break;
+        case AESCIPHER_OPTMODE::CBC: cm_ = TV::CipherMode::CBC; break;
+        default: GTEST_FAIL() << "Unsupported mode for PKCS#7 round-trip"; return;
+    }
+
+    std::unique_ptr<SP::ModeTestVectorBase> example = SP::create(ks_, cm_);
+    ASSERT_NE(example, nullptr);
+
+    AESKEY key(example->getKey(), ks);
+    AESCIPHER ciph(key, AESCIPHER::OperationMode(cm));
+    if (cm == AESCIPHER_OPTMODE::CBC)
+        ciph.setInitialVectorForTesting(
+            std::vector<uint8_t>(SP::kInitializationVector, SP::kInitializationVector + 16));
+
+    for (size_t len : {1u, 15u, 17u, 31u}) {
+        std::vector<uint8_t> plaintext(len);
+        for (size_t i = 0; i < len; ++i) plaintext[i] = static_cast<uint8_t>(i & 0xFF);
+
+        std::vector<uint8_t> ciphertext;
+        std::vector<uint8_t> recovered;
+
+        ASSERT_NO_THROW(ciph.encryption(plaintext, ciphertext)) << "len=" << len;
+        EXPECT_EQ(ciphertext.size() % 16, 0u) << "ciphertext not block-aligned, len=" << len;
+        EXPECT_GT(ciphertext.size(), plaintext.size()) << "len=" << len;
+
+        ASSERT_NO_THROW(ciph.decryption(ciphertext, recovered)) << "len=" << len;
+        EXPECT_EQ(recovered, plaintext) << "round-trip failed for len=" << len;
+    }
+}
+
+TEST(Cipher_PKCS7, AES128_ECB) { test_pkcs7_round_trip(AESKEY_LENBITS::_128, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PKCS7, AES128_CBC) { test_pkcs7_round_trip(AESKEY_LENBITS::_128, AESCIPHER_OPTMODE::CBC); }
+TEST(Cipher_PKCS7, AES192_ECB) { test_pkcs7_round_trip(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PKCS7, AES192_CBC) { test_pkcs7_round_trip(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::CBC); }
+TEST(Cipher_PKCS7, AES256_ECB) { test_pkcs7_round_trip(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PKCS7, AES256_CBC) { test_pkcs7_round_trip(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::CBC); }
+
+// ── PaddingMode::None — rejects unaligned, accepts aligned ───────────────────
+
+void test_padding_mode_none(AESKEY_LENBITS ks, AESCIPHER_OPTMODE cm) {
+    AESKEY key(ks);
+    AESCIPHER ciph(key, AESCIPHER::OperationMode(cm), AESCIPHER::PaddingMode::None);
+    if (cm == AESCIPHER_OPTMODE::CBC)
+        ciph.setInitialVectorForTesting(std::vector<uint8_t>(16, 0x00));
+
+    // Non-aligned input must throw
+    std::vector<uint8_t> unaligned(15);
+    std::vector<uint8_t> out;
+    EXPECT_THROW(ciph.encryption(unaligned, out), std::invalid_argument);
+    EXPECT_THROW(ciph.decryption(unaligned, out), std::invalid_argument);
+
+    // Aligned input must succeed and produce same-size output
+    std::vector<uint8_t> aligned(32, 0xAB);
+    ASSERT_NO_THROW(ciph.encryption(aligned, out));
+    EXPECT_EQ(out.size(), aligned.size());
+
+    std::vector<uint8_t> recovered;
+    ASSERT_NO_THROW(ciph.decryption(out, recovered));
+    EXPECT_EQ(recovered, aligned);
+}
+
+TEST(Cipher_PaddingNone, AES128_ECB) { test_padding_mode_none(AESKEY_LENBITS::_128, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PaddingNone, AES128_CBC) { test_padding_mode_none(AESKEY_LENBITS::_128, AESCIPHER_OPTMODE::CBC); }
+TEST(Cipher_PaddingNone, AES192_ECB) { test_padding_mode_none(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PaddingNone, AES192_CBC) { test_padding_mode_none(AESKEY_LENBITS::_192, AESCIPHER_OPTMODE::CBC); }
+TEST(Cipher_PaddingNone, AES256_ECB) { test_padding_mode_none(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::ECB); }
+TEST(Cipher_PaddingNone, AES256_CBC) { test_padding_mode_none(AESKEY_LENBITS::_256, AESCIPHER_OPTMODE::CBC); }

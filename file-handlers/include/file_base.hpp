@@ -61,7 +61,7 @@ public:
 	* * This method modifies the internal data buffer.
 	* @throws Throws exceptions if encryption fails
 	*/
-	void apply_encryption(const Encryptor& algorithm);
+	virtual void apply_encryption(const Encryptor& algorithm);
 
 	/**
 	* @brief Applies an decryption algorithm to the file's data.
@@ -69,7 +69,7 @@ public:
 	* * This method modifies the internal data buffer.
 	* @throws Throws exceptions if decryption fails
 	*/
-	void apply_decryption(const Encryptor& algorithm);
+	virtual void apply_decryption(const Encryptor& algorithm);
 
 	/**
 	* @brief Calculates various randomness statistics on the current data buffer.
@@ -82,6 +82,12 @@ public:
 	const std::filesystem::path& get_path() const;
 	const std::vector<uint8_t>& get_data() const;
 	size_t get_size() const;
+
+	/**
+	 * @brief Appends raw bytes to the internal data buffer.
+	 * Used to restore alignment-tail bytes before decryption.
+	 */
+	void append_data(const std::vector<uint8_t>& bytes);
 };
 
 } //namespace File
