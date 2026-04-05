@@ -48,47 +48,39 @@ Key::Key(const Key& k): lenBits(k.lenBits), lenBytes(k.lenBytes) {
     for(i = 0; i < k.lenBytes; i++) this->data[i] = k.data[i];                  // -Supposing Cipher object is well constructed, this is, k.data != nullptr
 }
 
-constexpr static const char* keyFileHeaderID = "AESKEY";
-constexpr const size_t headerLen = 6;
-
 Key::Key(const std::string& filepath): lenBits(LengthBits::_128), lenBytes(BLOCK_SIZE) {
-    char headerID[headerLen];
-    uint16_t keyLen;
     std::ifstream file;
-    file.open(filepath, std::ios::binary);
-    if(file.is_open()) {
-        file.read(const_cast<char*>(headerID), static_cast<std::streamsize>(headerLen)); // -Determining if file is a .data file
-        if(memcmp(headerID, "AESKEY", headerLen) == 0) {
-                file.read(reinterpret_cast<char*>(&keyLen), 2);                                   // -Reading key lenBits
-                if(keyLen == uint16_t(LengthBits::_128) || keyLen == uint16_t(LengthBits::_192) || keyLen == uint16_t(LengthBits::_256))
-                    this->lenBits = static_cast<LengthBits>(keyLen);
-                else {
-                    throw std::runtime_error(
-                        "In file src/core/key.cpp, function Key::Key(const std::string& filepath):"
-                        + std::to_string(static_cast<int>(keyLen)) + " is not a valid length (in bits) for key.\n"
-                    );
-                }
-                this->lenBytes = fromLenBitsToLenBytes(this->lenBits);          // -lenBytes = lenbits / 8;
-                this->data = new uint8_t[this->lenBytes];                       // -Reading key
-                file.read(reinterpret_cast<char*>(this->data), static_cast<std::streamsize>(this->lenBytes));
-                if (!file || file.gcount() != static_cast<std::streamsize>(this->lenBytes)) {
-                    delete[] this->data;
-                    this->data = nullptr;
-                    throw std::runtime_error(
-                        "In file src/core/key.cpp, function Key::Key(const std::string& filepath): "
-                        "File is truncated or corrupted. Expected " + std::to_string(this->lenBytes) +
-                        " bytes of key data, but could only read " + std::to_string(file.gcount()) + " bytes.\n"
-                    );
-                }
-           } else {
-                throw std::runtime_error(
-                    "In file src/core/key.cpp, function Key::Key(const std::string& filepath): String "
-                    + filepath + " does not represent a valid AES key file.\n"
-                );
-           }
-    } else {
+    file.open(filepath, std::ios::binary | std::ios::ate);
+    if(!file.is_open()) {
         throw std::runtime_error(
-            "In file src/core/key.cpp, function Key::Key(const std::string& filepath): Failed to open " + filepath
+            "In file src/core/key.cpp, function Key::Key(const std::string& filepath):"
+            " Failed to open " + filepath
+        );
+    }
+    std::streamsize fileSize = file.tellg();
+    if(fileSize == 16)
+        this->lenBits = LengthBits::_128;
+    else if(fileSize == 24)
+        this->lenBits = LengthBits::_192;
+    else if(fileSize == 32)
+        this->lenBits = LengthBits::_256;
+    else {
+        throw std::invalid_argument(
+            "In file src/core/key.cpp, function Key::Key(const std::string& filepath):"
+            " File size " + std::to_string(fileSize) +
+            " does not match any valid AES key length (16, 24, or 32 bytes)."
+        );
+    }
+    this->lenBytes = fromLenBitsToLenBytes(this->lenBits);
+    this->data = new uint8_t[this->lenBytes];
+    file.seekg(0);
+    file.read(reinterpret_cast<char*>(this->data), static_cast<std::streamsize>(this->lenBytes));
+    if(!file || file.gcount() != static_cast<std::streamsize>(this->lenBytes)) {
+        delete[] this->data;
+        this->data = nullptr;
+        throw std::runtime_error(
+            "In file src/core/key.cpp, function Key::Key(const std::string& filepath):"
+            " Failed to read key data from " + filepath
         );
     }
 }
@@ -143,20 +135,20 @@ std::ostream& CipherFortis::operator<<(std::ostream& ost, const Key& k) {
 void Key::save(const std::string& filepath) const {
     std::ofstream file;
     file.open(filepath, std::ios::binary);
-    if(file.is_open()) {
-        file.write(keyFileHeaderID, headerLen);                                                 // -File type
-        file.write(reinterpret_cast<const char*>(&this->lenBits), 2);           // -Key lenBits in bits
-        file.write(reinterpret_cast<char*>(this->data), static_cast<std::streamsize>(this->lenBytes));
-        if (!file) {
-            throw std::runtime_error(
-            "In function void Key::save(const std::string& filepath) const: "
-            "Failed to write key data to file: " + filepath
+    if(!file.is_open()) {
+        throw std::runtime_error(
+            "In function void Key::save(const std::string& filepath) const:"
+            " Failed to open " + filepath + " for writing."
         );
     }
-    } else {
+    file.write(
+        reinterpret_cast<const char*>(this->data),
+        static_cast<std::streamsize>(this->lenBytes)
+    );
+    if(!file) {
         throw std::runtime_error(
-            "In function void Key::save(const char* const filepath): Failed to write "
-            + filepath + " file.\n"
+            "In function void Key::save(const std::string& filepath) const:"
+            " Failed to write key data to file: " + filepath
         );
     }
 }

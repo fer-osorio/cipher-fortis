@@ -31,9 +31,10 @@ public:
 	 * */
 	Key(const std::vector<uint8_t>& key_, LengthBits);
 	/*
-	 * Consider: Throws exception when file does not exist or when file is not valid
+	 * Consider: Throws exception when file does not exist, cannot be opened, or
+	 * its size does not match a valid AES key length (16, 24, or 32 bytes).
 	 * */
-	explicit Key(const std::string& filepath);						// -Building from binary file.
+	explicit Key(const std::string& filepath);						// -Building from raw binary file.
 	Key(const Key&);
 	~Key();
 
