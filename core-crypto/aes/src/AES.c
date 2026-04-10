@@ -2,8 +2,48 @@
 #include "GF256.h"
 #include "word.h"
 #include "../include/AES.h"
+#ifndef CF_NO_TTABLES
+#include "T_tables.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
+
+/*
+ * Pack column c of a row-major Block_t as a big-endian uint32_t
+ * (row 0 = MSB).  The block stores word_[r] = row r, so column c
+ * spans word_[0].uint08_[c] .. word_[3].uint08_[c].
+ */
+#ifndef CF_NO_TTABLES
+static inline uint32_t block_col_be(const Block_t* b, size_t c) {
+  return ((uint32_t)b->word_[0].uint08_[c] << 24)
+       | ((uint32_t)b->word_[1].uint08_[c] << 16)
+       | ((uint32_t)b->word_[2].uint08_[c] <<  8)
+       |  (uint32_t)b->word_[3].uint08_[c];
+}
+
+/*
+ * Apply InvMixColumns to a big-endian packed column word.
+ * Used for decryption: the direct inverse cipher applies AddRoundKey
+ * before InvMixColumns, so round keys must be pre-mixed via
+ * InvMixColumns (linearity: InvMixColumns(s^k) = InvMixColumns(s)
+ * ^ InvMixColumns(k)).
+ */
+static inline uint32_t inv_mix_col(uint32_t col) {
+  uint8_t a = (col >> 24) & 0xffu;
+  uint8_t b = (col >> 16) & 0xffu;
+  uint8_t c = (col >>  8) & 0xffu;
+  uint8_t d =  col        & 0xffu;
+  return
+    ((uint32_t)(multiply[0x0e][a]^multiply[0x0b][b]
+               ^multiply[0x0d][c]^multiply[0x09][d]) << 24)
+  | ((uint32_t)(multiply[0x09][a]^multiply[0x0e][b]
+               ^multiply[0x0b][c]^multiply[0x0d][d]) << 16)
+  | ((uint32_t)(multiply[0x0d][a]^multiply[0x09][b]
+               ^multiply[0x0e][c]^multiply[0x0b][d]) <<  8)
+  |  (uint32_t)(multiply[0x0b][a]^multiply[0x0d][b]
+               ^multiply[0x09][c]^multiply[0x0e][d]);
+}
+#endif
 
 static const Block_t a = {{                                                       // -For MixColumns.
   0x02, 0x03, 0x01, 0x01,
@@ -223,6 +263,94 @@ enum ExceptionCode encryptBlock(const Block_t* input, const KeyExpansion_t* ke_p
 
   if(input == NULL) return NullInput;
   if(output== NULL) return NullOutput;
+
+#ifndef CF_NO_TTABLES
+  if (!debug) {
+    if(ke_p == NULL) return NullKeyExpansion;
+    uint32_t s0, s1, s2, s3, t0, t1, t2, t3;
+    size_t r;
+
+    /* Load state as column-major big-endian uint32_t */
+    s0 = block_col_be(input, 0);
+    s1 = block_col_be(input, 1);
+    s2 = block_col_be(input, 2);
+    s3 = block_col_be(input, 3);
+
+    /* AddRoundKey round 0 */
+    s0 ^= block_col_be(&ke_p->dataBlocks[0], 0);
+    s1 ^= block_col_be(&ke_p->dataBlocks[0], 1);
+    s2 ^= block_col_be(&ke_p->dataBlocks[0], 2);
+    s3 ^= block_col_be(&ke_p->dataBlocks[0], 3);
+
+    /* Rounds 1 ... Nr-1 */
+    for (r = 1; r < ke_p->Nr; r++) {
+      t0 = Te0[ s0 >> 24         ]
+         ^ Te1[(s1 >> 16) & 0xffu]
+         ^ Te2[(s2 >>  8) & 0xffu]
+         ^ Te3[ s3        & 0xffu]
+         ^ block_col_be(&ke_p->dataBlocks[r], 0);
+      t1 = Te0[ s1 >> 24         ]
+         ^ Te1[(s2 >> 16) & 0xffu]
+         ^ Te2[(s3 >>  8) & 0xffu]
+         ^ Te3[ s0        & 0xffu]
+         ^ block_col_be(&ke_p->dataBlocks[r], 1);
+      t2 = Te0[ s2 >> 24         ]
+         ^ Te1[(s3 >> 16) & 0xffu]
+         ^ Te2[(s0 >>  8) & 0xffu]
+         ^ Te3[ s1        & 0xffu]
+         ^ block_col_be(&ke_p->dataBlocks[r], 2);
+      t3 = Te0[ s3 >> 24         ]
+         ^ Te1[(s0 >> 16) & 0xffu]
+         ^ Te2[(s1 >>  8) & 0xffu]
+         ^ Te3[ s2        & 0xffu]
+         ^ block_col_be(&ke_p->dataBlocks[r], 3);
+      s0 = t0; s1 = t1; s2 = t2; s3 = t3;
+    }
+
+    /* Final round — SubBytes + ShiftRows + AddRoundKey, no MixColumns */
+    t0 = (Te4[ s0 >> 24         ] & 0xff000000u)
+       ^ (Te4[(s1 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Te4[(s2 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Te4[ s3        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[r], 0);
+    t1 = (Te4[ s1 >> 24         ] & 0xff000000u)
+       ^ (Te4[(s2 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Te4[(s3 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Te4[ s0        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[r], 1);
+    t2 = (Te4[ s2 >> 24         ] & 0xff000000u)
+       ^ (Te4[(s3 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Te4[(s0 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Te4[ s1        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[r], 2);
+    t3 = (Te4[ s3 >> 24         ] & 0xff000000u)
+       ^ (Te4[(s0 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Te4[(s1 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Te4[ s2        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[r], 3);
+
+    /* Write back: t0-t3 are output columns; convert to row-major */
+    output->word_[0].uint08_[0] = (t0 >> 24) & 0xffu;
+    output->word_[0].uint08_[1] = (t1 >> 24) & 0xffu;
+    output->word_[0].uint08_[2] = (t2 >> 24) & 0xffu;
+    output->word_[0].uint08_[3] = (t3 >> 24) & 0xffu;
+    output->word_[1].uint08_[0] = (t0 >> 16) & 0xffu;
+    output->word_[1].uint08_[1] = (t1 >> 16) & 0xffu;
+    output->word_[1].uint08_[2] = (t2 >> 16) & 0xffu;
+    output->word_[1].uint08_[3] = (t3 >> 16) & 0xffu;
+    output->word_[2].uint08_[0] = (t0 >>  8) & 0xffu;
+    output->word_[2].uint08_[1] = (t1 >>  8) & 0xffu;
+    output->word_[2].uint08_[2] = (t2 >>  8) & 0xffu;
+    output->word_[2].uint08_[3] = (t3 >>  8) & 0xffu;
+    output->word_[3].uint08_[0] =  t0        & 0xffu;
+    output->word_[3].uint08_[1] =  t1        & 0xffu;
+    output->word_[3].uint08_[2] =  t2        & 0xffu;
+    output->word_[3].uint08_[3] =  t3        & 0xffu;
+
+    return NoException;
+  }
+#endif /* CF_NO_TTABLES */
+
   if(input != output) copyBlock(input, output);
 
   if(debug) copyBlock(output,SOR);                                              // Equivalent to copyBlock(output,&SOR[0])
@@ -332,6 +460,100 @@ enum ExceptionCode decryptBlock(const Block_t* input, const KeyExpansion_t* ke_p
 
   if(input == NULL) return NullInput;
   if(output== NULL) return NullOutput;
+
+#ifndef CF_NO_TTABLES
+  if (!debug) {
+    if(ke_p == NULL) return NullKeyExpansion;
+    uint32_t s0, s1, s2, s3, t0, t1, t2, t3;
+    size_t r;
+
+    /* Load state as column-major big-endian uint32_t */
+    s0 = block_col_be(input, 0);
+    s1 = block_col_be(input, 1);
+    s2 = block_col_be(input, 2);
+    s3 = block_col_be(input, 3);
+
+    /* AddRoundKey round Nr */
+    s0 ^= block_col_be(&ke_p->dataBlocks[ke_p->Nr], 0);
+    s1 ^= block_col_be(&ke_p->dataBlocks[ke_p->Nr], 1);
+    s2 ^= block_col_be(&ke_p->dataBlocks[ke_p->Nr], 2);
+    s3 ^= block_col_be(&ke_p->dataBlocks[ke_p->Nr], 3);
+
+    /* Rounds Nr-1 ... 1
+     * T-tables fuse InvShiftRows + InvSubBytes + InvMixColumns.
+     * Original cipher order: InvShiftRows → InvSubBytes → AddRoundKey
+     * → InvMixColumns.  By linearity of InvMixColumns:
+     *   InvMixColumns(s ^ rk) = InvMixColumns(s) ^ InvMixColumns(rk)
+     * so the round key is pre-mixed with inv_mix_col(). */
+    for (r = ke_p->Nr - 1; r > 0; r--) {
+      t0 = Td0[ s0 >> 24         ]
+         ^ Td1[(s3 >> 16) & 0xffu]
+         ^ Td2[(s2 >>  8) & 0xffu]
+         ^ Td3[ s1        & 0xffu]
+         ^ ke_p->invRoundCols[r * 4 + 0];
+      t1 = Td0[ s1 >> 24         ]
+         ^ Td1[(s0 >> 16) & 0xffu]
+         ^ Td2[(s3 >>  8) & 0xffu]
+         ^ Td3[ s2        & 0xffu]
+         ^ ke_p->invRoundCols[r * 4 + 1];
+      t2 = Td0[ s2 >> 24         ]
+         ^ Td1[(s1 >> 16) & 0xffu]
+         ^ Td2[(s0 >>  8) & 0xffu]
+         ^ Td3[ s3        & 0xffu]
+         ^ ke_p->invRoundCols[r * 4 + 2];
+      t3 = Td0[ s3 >> 24         ]
+         ^ Td1[(s2 >> 16) & 0xffu]
+         ^ Td2[(s1 >>  8) & 0xffu]
+         ^ Td3[ s0        & 0xffu]
+         ^ ke_p->invRoundCols[r * 4 + 3];
+      s0 = t0; s1 = t1; s2 = t2; s3 = t3;
+    }
+
+    /* Final round — InvSubBytes + InvShiftRows + AddRoundKey,
+     * no InvMixColumns */
+    t0 = (Td4[ s0 >> 24         ] & 0xff000000u)
+       ^ (Td4[(s3 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Td4[(s2 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Td4[ s1        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[0], 0);
+    t1 = (Td4[ s1 >> 24         ] & 0xff000000u)
+       ^ (Td4[(s0 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Td4[(s3 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Td4[ s2        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[0], 1);
+    t2 = (Td4[ s2 >> 24         ] & 0xff000000u)
+       ^ (Td4[(s1 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Td4[(s0 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Td4[ s3        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[0], 2);
+    t3 = (Td4[ s3 >> 24         ] & 0xff000000u)
+       ^ (Td4[(s2 >> 16) & 0xffu] & 0x00ff0000u)
+       ^ (Td4[(s1 >>  8) & 0xffu] & 0x0000ff00u)
+       ^ (Td4[ s0        & 0xffu] & 0x000000ffu)
+       ^ block_col_be(&ke_p->dataBlocks[0], 3);
+
+    /* Write back: t0-t3 are output columns; convert to row-major */
+    output->word_[0].uint08_[0] = (t0 >> 24) & 0xffu;
+    output->word_[0].uint08_[1] = (t1 >> 24) & 0xffu;
+    output->word_[0].uint08_[2] = (t2 >> 24) & 0xffu;
+    output->word_[0].uint08_[3] = (t3 >> 24) & 0xffu;
+    output->word_[1].uint08_[0] = (t0 >> 16) & 0xffu;
+    output->word_[1].uint08_[1] = (t1 >> 16) & 0xffu;
+    output->word_[1].uint08_[2] = (t2 >> 16) & 0xffu;
+    output->word_[1].uint08_[3] = (t3 >> 16) & 0xffu;
+    output->word_[2].uint08_[0] = (t0 >>  8) & 0xffu;
+    output->word_[2].uint08_[1] = (t1 >>  8) & 0xffu;
+    output->word_[2].uint08_[2] = (t2 >>  8) & 0xffu;
+    output->word_[2].uint08_[3] = (t3 >>  8) & 0xffu;
+    output->word_[3].uint08_[0] =  t0        & 0xffu;
+    output->word_[3].uint08_[1] =  t1        & 0xffu;
+    output->word_[3].uint08_[2] =  t2        & 0xffu;
+    output->word_[3].uint08_[3] =  t3        & 0xffu;
+
+    return NoException;
+  }
+#endif /* CF_NO_TTABLES */
+
   if(input != output) copyBlock(input, output);
 
   if(debug) copyBlock(output,SOR + ke_p->Nr);                                   // Equivalent to copyBlock(output,&SOR[ke_p->Nr])
