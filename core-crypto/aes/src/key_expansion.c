@@ -5,6 +5,59 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#ifndef CF_NO_TTABLES
+/* GF256.h provides the multiply[][] table needed by inv_mix_col below. */
+#include "GF256.h"
+
+/*
+ * NOTE: block_col_be and inv_mix_col are duplicated from AES.c.
+ * They are reproduced here because both are file-scoped (static) and
+ * key_expansion.c needs them to precompute invRoundCols at key-expansion
+ * time. A shared internal header should be introduced in a future
+ * clean-up pass to eliminate this duplication.
+ */
+
+/* Pack column c of a Block_t as a big-endian uint32_t (row 0 = MSB). */
+static inline uint32_t block_col_be(const Block_t* b, size_t c) {
+  return ((uint32_t)b->word_[0].uint08_[c] << 24)
+       | ((uint32_t)b->word_[1].uint08_[c] << 16)
+       | ((uint32_t)b->word_[2].uint08_[c] <<  8)
+       |  (uint32_t)b->word_[3].uint08_[c];
+}
+
+/* Apply InvMixColumns to a single big-endian packed column word. */
+static inline uint32_t inv_mix_col(uint32_t col) {
+  uint8_t a = (col >> 24) & 0xffu;
+  uint8_t b = (col >> 16) & 0xffu;
+  uint8_t c = (col >>  8) & 0xffu;
+  uint8_t d =  col        & 0xffu;
+  return
+    ((uint32_t)(  multiply[0x0e][a] ^ multiply[0x0b][b]
+               ^ multiply[0x0d][c] ^ multiply[0x09][d]) << 24)
+  | ((uint32_t)(  multiply[0x09][a] ^ multiply[0x0e][b]
+               ^ multiply[0x0b][c] ^ multiply[0x0d][d]) << 16)
+  | ((uint32_t)(  multiply[0x0d][a] ^ multiply[0x09][b]
+               ^ multiply[0x0e][c] ^ multiply[0x0b][d]) <<  8)
+  |  (uint32_t)(  multiply[0x0b][a] ^ multiply[0x0d][b]
+               ^ multiply[0x09][c] ^ multiply[0x0e][d]);
+}
+
+/*
+ * Fill ke->invRoundCols from the already-populated ke->dataBlocks.
+ * Must be called after dataBlocks is written (KeyExpansionInit,
+ * KeyExpansionReadFromBytes, KeyExpansionCreateZero).
+ */
+static void populateInvRoundCols(KeyExpansion_t* ke) {
+  for (size_t r = 1; r < ke->Nr; r++) {
+    for (size_t c = 0; c < 4; c++) {
+      ke->invRoundCols[r * 4 + c] = inv_mix_col(
+        block_col_be(&ke->dataBlocks[r], c)
+      );
+    }
+  }
+}
+#endif /* CF_NO_TTABLES */
+
 static size_t getKeyExpansionLengthBlocksfromNk(enum Nk_t Nk){
   return getKeyExpansionLengthWordsfromNk(Nk) / NB;
 }
@@ -17,11 +70,25 @@ static KeyExpansion_t* KeyExpansionAllocate(enum Nk_t Nk){
   output->Nr = getNrfromNk(Nk);
   output->wordsSize = getKeyExpansionLengthWordsfromNk(Nk);
   output->blockSize = getKeyExpansionLengthBlocksfromNk(Nk);
+  /* Initialise pointer fields to NULL before any early-exit path so
+   * that KeyExpansionDestroy never frees an uninitialised pointer. */
+#ifndef CF_NO_TTABLES
+  output->invRoundCols = NULL;
+#endif
   output->dataBlocks = (Block_t*)malloc(output->blockSize*sizeof(Block_t));
   if(output->dataBlocks == NULL) {
       KeyExpansionDestroy(&output);
       return NULL;
   }
+#ifndef CF_NO_TTABLES
+  output->invRoundCols = (uint32_t*)malloc(
+    output->blockSize * 4 * sizeof(uint32_t)
+  );
+  if(output->invRoundCols == NULL) {
+    KeyExpansionDestroy(&output);
+    return NULL;
+  }
+#endif
   return output;
 }
 
@@ -167,6 +234,10 @@ enum ExceptionCode KeyExpansionInit(KeyExpansion_t*const output, const uint8_t* 
   }
   free(buffer);
 
+#ifndef CF_NO_TTABLES
+  populateInvRoundCols(output);
+#endif
+
   return NoException;
 }
 
@@ -195,6 +266,9 @@ KeyExpansion_t* KeyExpansionCreateZero(size_t keylenbits){
   for(size_t i = 0; i < output->blockSize; i++){
     BlockFromBytes(output->dataBlocks + i, tmp);
   }
+#ifndef CF_NO_TTABLES
+  populateInvRoundCols(output);
+#endif
   return output;
 }
 
@@ -205,6 +279,12 @@ void KeyExpansionDestroy(KeyExpansion_t** ke_pp){
       free(ke_p->dataBlocks);
       ke_p->dataBlocks = NULL;                                                    // Signaling that the memory has been freed.
     }
+#ifndef CF_NO_TTABLES
+    if(ke_p->invRoundCols != NULL) {
+      free(ke_p->invRoundCols);
+      ke_p->invRoundCols = NULL;
+    }
+#endif
     free(ke_p);
     *ke_pp = NULL;                                                                // Signaling that the memory has been freed.
   }
@@ -222,6 +302,9 @@ enum ExceptionCode KeyExpansionReadFromBytes(KeyExpansion_t*const output, const 
   for(size_t i = 0, j = 0; i < output->blockSize; i++, j += BLOCK_SIZE){
     BlockFromBytes(output->dataBlocks + i, input + j);
   }
+#ifndef CF_NO_TTABLES
+  populateInvRoundCols(output);
+#endif
   return NoException;
 }
 
