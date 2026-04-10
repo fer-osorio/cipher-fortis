@@ -17,6 +17,13 @@ typedef struct KeyExpansion_ {
   size_t wordsSize;
   size_t blockSize;
   Block_t* dataBlocks;
+#ifndef CF_NO_TTABLES
+  /* Precomputed inv_mix_col of each forward round-key column.
+   * Indexed as invRoundCols[r*4 + c] for round r, column c.
+   * Valid for r in [1, Nr-1]; rounds 0 and Nr have no InvMixColumns
+   * partner and are not stored here. */
+  uint32_t *invRoundCols;
+#endif
 } KeyExpansion_t;
 
 /*
