@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write      # required to create a release and upload assets
 
     steps:
       - name: Checkout source
