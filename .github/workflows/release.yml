@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install CMake
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential
+
+      - name: Build
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/release/bin/command-line-tools/image-encryptor
