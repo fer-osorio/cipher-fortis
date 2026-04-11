@@ -24,6 +24,15 @@ typedef struct KeyExpansion_ {
    * partner and are not stored here. */
   uint32_t *invRoundCols;
 #endif
+#ifdef CF_ENABLE_AESNI
+  /* Round keys in FIPS 197 column-major byte order, ready for direct
+   * _mm_loadu_si128. Size: (Nr+1)*16 bytes. */
+  uint8_t *niRoundKeys;
+  /* AESIMC-transformed round keys for AES-NI decryption.
+   * Entries 1..Nr-1 are AESIMC(niRoundKeys[r]); entries 0 and Nr
+   * are verbatim copies of niRoundKeys[0/Nr]. Size: (Nr+1)*16 bytes. */
+  uint8_t *niDecRoundKeys;
+#endif
 } KeyExpansion_t;
 
 /*
