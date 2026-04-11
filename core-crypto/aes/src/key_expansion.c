@@ -4,6 +4,9 @@
 #include "../include/constants.h"
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef CF_ENABLE_AESNI
+#include "aes_ni.h"
+#endif
 
 #ifndef CF_NO_TTABLES
 /* GF256.h provides the multiply[][] table needed by inv_mix_col below. */
@@ -75,6 +78,10 @@ static KeyExpansion_t* KeyExpansionAllocate(enum Nk_t Nk){
 #ifndef CF_NO_TTABLES
   output->invRoundCols = NULL;
 #endif
+#ifdef CF_ENABLE_AESNI
+  output->niRoundKeys    = NULL;
+  output->niDecRoundKeys = NULL;
+#endif
   output->dataBlocks = (Block_t*)malloc(output->blockSize*sizeof(Block_t));
   if(output->dataBlocks == NULL) {
       KeyExpansionDestroy(&output);
@@ -85,6 +92,22 @@ static KeyExpansion_t* KeyExpansionAllocate(enum Nk_t Nk){
     output->blockSize * 4 * sizeof(uint32_t)
   );
   if(output->invRoundCols == NULL) {
+    KeyExpansionDestroy(&output);
+    return NULL;
+  }
+#endif
+#ifdef CF_ENABLE_AESNI
+  output->niRoundKeys = (uint8_t*)malloc(
+    (output->Nr + 1) * 16
+  );
+  if(output->niRoundKeys == NULL) {
+    KeyExpansionDestroy(&output);
+    return NULL;
+  }
+  output->niDecRoundKeys = (uint8_t*)malloc(
+    (output->Nr + 1) * 16
+  );
+  if(output->niDecRoundKeys == NULL) {
     KeyExpansionDestroy(&output);
     return NULL;
   }
@@ -237,6 +260,9 @@ enum ExceptionCode KeyExpansionInit(KeyExpansion_t*const output, const uint8_t* 
 #ifndef CF_NO_TTABLES
   populateInvRoundCols(output);
 #endif
+#ifdef CF_ENABLE_AESNI
+  aes_ni_populate_keys(output);
+#endif
 
   return NoException;
 }
@@ -269,6 +295,9 @@ KeyExpansion_t* KeyExpansionCreateZero(size_t keylenbits){
 #ifndef CF_NO_TTABLES
   populateInvRoundCols(output);
 #endif
+#ifdef CF_ENABLE_AESNI
+  aes_ni_populate_keys(output);
+#endif
   return output;
 }
 
@@ -283,6 +312,16 @@ void KeyExpansionDestroy(KeyExpansion_t** ke_pp){
     if(ke_p->invRoundCols != NULL) {
       free(ke_p->invRoundCols);
       ke_p->invRoundCols = NULL;
+    }
+#endif
+#ifdef CF_ENABLE_AESNI
+    if(ke_p->niRoundKeys != NULL) {
+      free(ke_p->niRoundKeys);
+      ke_p->niRoundKeys = NULL;
+    }
+    if(ke_p->niDecRoundKeys != NULL) {
+      free(ke_p->niDecRoundKeys);
+      ke_p->niDecRoundKeys = NULL;
     }
 #endif
     free(ke_p);
@@ -304,6 +343,9 @@ enum ExceptionCode KeyExpansionReadFromBytes(KeyExpansion_t*const output, const 
   }
 #ifndef CF_NO_TTABLES
   populateInvRoundCols(output);
+#endif
+#ifdef CF_ENABLE_AESNI
+  aes_ni_populate_keys(output);
 #endif
   return NoException;
 }
