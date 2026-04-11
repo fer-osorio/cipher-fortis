@@ -5,6 +5,10 @@
 #ifndef CF_NO_TTABLES
 #include "T_tables.h"
 #endif
+#ifdef CF_ENABLE_AESNI
+#include "cpu_features.h"
+#include "aes_ni.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -264,6 +268,11 @@ enum ExceptionCode encryptBlock(const Block_t* input, const KeyExpansion_t* ke_p
   if(input == NULL) return NullInput;
   if(output== NULL) return NullOutput;
 
+#ifdef CF_ENABLE_AESNI
+  if (!debug && cf_cpu_has_aesni())
+    return encryptBlock_ni(input, ke_p, output, debug);
+#endif
+
 #ifndef CF_NO_TTABLES
   if (!debug) {
     if(ke_p == NULL) return NullKeyExpansion;
@@ -460,6 +469,11 @@ enum ExceptionCode decryptBlock(const Block_t* input, const KeyExpansion_t* ke_p
 
   if(input == NULL) return NullInput;
   if(output== NULL) return NullOutput;
+
+#ifdef CF_ENABLE_AESNI
+  if (!debug && cf_cpu_has_aesni())
+    return decryptBlock_ni(input, ke_p, output, debug);
+#endif
 
 #ifndef CF_NO_TTABLES
   if (!debug) {
