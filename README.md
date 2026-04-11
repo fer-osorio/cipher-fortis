@@ -2,6 +2,8 @@
 
 A modular C/C++ library for file encryption using AES (Advanced Encryption Standard) with built-in encryption quality analysis through statistical metrics.
 
+** This project is in active development under v0.x. The public API is not yet stable and may change between minor releases. **
+
 ## Features
 
 - **AES encryption** supporting 128, 192, and 256-bit keys
