@@ -42,3 +42,4 @@
 # CMake build directories
 build/
 cmake-build-*/
+Testing/
