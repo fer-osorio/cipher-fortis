@@ -113,6 +113,94 @@ enum ExceptionCode decryptBlock_ni(
   return NoException;
 }
 
+/*
+ * LAYOUT NOTE for the stride-4 functions:
+ *
+ * The single-block path goes:  raw bytes → BlockFromBytes → Block_t (row-major)
+ *                              → block_to_m128i (CF_TRANSPOSE) → XMM (col-major)
+ *
+ * BlockFromBytes itself transposes (col-major FIPS 197 bytes → row-major Block_t),
+ * and block_to_m128i transposes again, so the two cancel out: raw FIPS 197 bytes
+ * are already in XMM column-major byte order.  Here we operate on raw byte arrays
+ * directly, so we skip both transposes and use plain _mm_loadu/storeu_si128.
+ */
+
+CF_TARGET_AESNI
+void encryptBlocks4_ni(
+  const uint8_t *in, const KeyExpansion_t *ke_p, uint8_t *out
+) {
+  __m128i b0 = _mm_loadu_si128((const __m128i *)(in +  0));
+  __m128i b1 = _mm_loadu_si128((const __m128i *)(in + 16));
+  __m128i b2 = _mm_loadu_si128((const __m128i *)(in + 32));
+  __m128i b3 = _mm_loadu_si128((const __m128i *)(in + 48));
+
+  /* Round 0 — AddRoundKey */
+  __m128i rk0 = load_ni_rk(ke_p->niRoundKeys, 0);
+  b0 = _mm_xor_si128(b0, rk0);
+  b1 = _mm_xor_si128(b1, rk0);
+  b2 = _mm_xor_si128(b2, rk0);
+  b3 = _mm_xor_si128(b3, rk0);
+
+  /* Rounds 1 .. Nr-1 — interleaved AESENC */
+  for (size_t r = 1; r < ke_p->Nr; r++) {
+    __m128i rk = load_ni_rk(ke_p->niRoundKeys, r);
+    b0 = _mm_aesenc_si128(b0, rk);
+    b1 = _mm_aesenc_si128(b1, rk);
+    b2 = _mm_aesenc_si128(b2, rk);
+    b3 = _mm_aesenc_si128(b3, rk);
+  }
+
+  /* Final round — AESENCLAST */
+  __m128i rkN = load_ni_rk(ke_p->niRoundKeys, ke_p->Nr);
+  b0 = _mm_aesenclast_si128(b0, rkN);
+  b1 = _mm_aesenclast_si128(b1, rkN);
+  b2 = _mm_aesenclast_si128(b2, rkN);
+  b3 = _mm_aesenclast_si128(b3, rkN);
+
+  _mm_storeu_si128((__m128i *)(out +  0), b0);
+  _mm_storeu_si128((__m128i *)(out + 16), b1);
+  _mm_storeu_si128((__m128i *)(out + 32), b2);
+  _mm_storeu_si128((__m128i *)(out + 48), b3);
+}
+
+CF_TARGET_AESNI
+void decryptBlocks4_ni(
+  const uint8_t *in, const KeyExpansion_t *ke_p, uint8_t *out
+) {
+  __m128i b0 = _mm_loadu_si128((const __m128i *)(in +  0));
+  __m128i b1 = _mm_loadu_si128((const __m128i *)(in + 16));
+  __m128i b2 = _mm_loadu_si128((const __m128i *)(in + 32));
+  __m128i b3 = _mm_loadu_si128((const __m128i *)(in + 48));
+
+  /* AddRoundKey — round Nr */
+  __m128i rkN = load_ni_rk(ke_p->niRoundKeys, ke_p->Nr);
+  b0 = _mm_xor_si128(b0, rkN);
+  b1 = _mm_xor_si128(b1, rkN);
+  b2 = _mm_xor_si128(b2, rkN);
+  b3 = _mm_xor_si128(b3, rkN);
+
+  /* Rounds Nr-1 .. 1 — interleaved AESDEC with AESIMC-transformed keys */
+  for (size_t r = ke_p->Nr - 1; r > 0; r--) {
+    __m128i rk = load_ni_rk(ke_p->niDecRoundKeys, r);
+    b0 = _mm_aesdec_si128(b0, rk);
+    b1 = _mm_aesdec_si128(b1, rk);
+    b2 = _mm_aesdec_si128(b2, rk);
+    b3 = _mm_aesdec_si128(b3, rk);
+  }
+
+  /* Final round — AESDECLAST with round key 0 (no InvMixColumns) */
+  __m128i rk0 = load_ni_rk(ke_p->niRoundKeys, 0);
+  b0 = _mm_aesdeclast_si128(b0, rk0);
+  b1 = _mm_aesdeclast_si128(b1, rk0);
+  b2 = _mm_aesdeclast_si128(b2, rk0);
+  b3 = _mm_aesdeclast_si128(b3, rk0);
+
+  _mm_storeu_si128((__m128i *)(out +  0), b0);
+  _mm_storeu_si128((__m128i *)(out + 16), b1);
+  _mm_storeu_si128((__m128i *)(out + 32), b2);
+  _mm_storeu_si128((__m128i *)(out + 48), b3);
+}
+
 CF_TARGET_AESNI
 void aes_ni_populate_keys(KeyExpansion_t *ke) {
   /* Build niRoundKeys: transpose each Block_t round key to FIPS
