@@ -4,6 +4,15 @@
 #include "../include/constants.h"
 #include <stdlib.h>
 #include <stdio.h>
+
+/*
+ * Zero a memory region through a volatile pointer so the compiler cannot
+ * optimise the write away.  Used to clear key material before free().
+ */
+static void volatile_zero(void *ptr, size_t len) {
+  volatile uint8_t *p = (volatile uint8_t *)ptr;
+  while (len--) *p++ = 0;
+}
 #ifdef CF_ENABLE_AESNI
 #include "aes_ni.h"
 #endif
@@ -82,7 +91,12 @@ static KeyExpansion_t* KeyExpansionAllocate(enum Nk_t Nk){
   output->niRoundKeys    = NULL;
   output->niDecRoundKeys = NULL;
 #endif
-  output->dataBlocks = (Block_t*)malloc(output->blockSize*sizeof(Block_t));
+  /* 16-byte alignment lets AES-NI and SIMD paths use aligned loads.
+   * sizeof(Block_t) == BLOCK_SIZE == 16, so the size is always a
+   * multiple of the alignment as required by aligned_alloc (C11). */
+  output->dataBlocks = (Block_t*)aligned_alloc(
+    16, output->blockSize * sizeof(Block_t)
+  );
   if(output->dataBlocks == NULL) {
       KeyExpansionDestroy(&output);
       return NULL;
@@ -305,27 +319,34 @@ void KeyExpansionDestroy(KeyExpansion_t** ke_pp){
   KeyExpansion_t* ke_p = *ke_pp;
   if(ke_p != NULL){
     if(ke_p->dataBlocks != NULL) {
+      volatile_zero(ke_p->dataBlocks, ke_p->blockSize * sizeof(Block_t));
       free(ke_p->dataBlocks);
-      ke_p->dataBlocks = NULL;                                                    // Signaling that the memory has been freed.
+      ke_p->dataBlocks = NULL;
     }
 #ifndef CF_NO_TTABLES
     if(ke_p->invRoundCols != NULL) {
+      volatile_zero(
+        ke_p->invRoundCols,
+        ke_p->blockSize * 4 * sizeof(uint32_t)
+      );
       free(ke_p->invRoundCols);
       ke_p->invRoundCols = NULL;
     }
 #endif
 #ifdef CF_ENABLE_AESNI
     if(ke_p->niRoundKeys != NULL) {
+      volatile_zero(ke_p->niRoundKeys, (ke_p->Nr + 1) * 16);
       free(ke_p->niRoundKeys);
       ke_p->niRoundKeys = NULL;
     }
     if(ke_p->niDecRoundKeys != NULL) {
+      volatile_zero(ke_p->niDecRoundKeys, (ke_p->Nr + 1) * 16);
       free(ke_p->niDecRoundKeys);
       ke_p->niDecRoundKeys = NULL;
     }
 #endif
     free(ke_p);
-    *ke_pp = NULL;                                                                // Signaling that the memory has been freed.
+    *ke_pp = NULL;
   }
 }
 
