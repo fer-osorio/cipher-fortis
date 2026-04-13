@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#ifdef CF_ENABLE_AESNI
+#  include "aes_ni.h"
+#  include "cpu_features.h"
+#endif
 
 /**
  * @struct Stream
@@ -213,8 +217,19 @@ static void encryptECB__(
   const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os
 ){
   Block_t* buffer = BlockCreateZero();
-  // Encrypting the blocks
-  for(size_t i = 0; i < is->info.sizeInBlocks; i++) {
+  size_t i = 0;
+#ifdef CF_ENABLE_AESNI
+  if (cf_cpu_has_aesni()) {
+    for (; i + 4 <= is->info.sizeInBlocks; i += 4) {
+      encryptBlocks4_ni(
+        is->currentPossition, ke_p, os->currentPossition
+      );
+      is->currentPossition += 4 * BLOCK_SIZE;
+      os->currentPossition += 4 * BLOCK_SIZE;
+    }
+  }
+#endif
+  for (; i < is->info.sizeInBlocks; i++) {
     encryptBlockMoveForward(ke_p, is, buffer, os);
   }
   BlockDestroy(&buffer);
@@ -253,10 +268,23 @@ enum ExceptionCode encryptECB(const uint8_t*const input, size_t size, const uint
  * @brief Implementation of ECB decryption operation mode.
  * @warning Supposes the input parameters are already validated.
  * */
-static void decryptECB__(const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os){
+static void decryptECB__(
+  const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os
+){
   Block_t* buffer = BlockCreateZero();
-  // Encrypting the blocks
-  for(size_t i = 0; i < is->info.sizeInBlocks; i++) {
+  size_t i = 0;
+#ifdef CF_ENABLE_AESNI
+  if (cf_cpu_has_aesni()) {
+    for (; i + 4 <= is->info.sizeInBlocks; i += 4) {
+      decryptBlocks4_ni(
+        is->currentPossition, ke_p, os->currentPossition
+      );
+      is->currentPossition += 4 * BLOCK_SIZE;
+      os->currentPossition += 4 * BLOCK_SIZE;
+    }
+  }
+#endif
+  for (; i < is->info.sizeInBlocks; i++) {
     decryptBlockMoveForward(ke_p, is, buffer, os);
   }
   BlockDestroy(&buffer);
@@ -470,15 +498,45 @@ static void applyCTRencryptionStepMoveForward(const KeyExpansion_t* ke_p, struct
   OutputStreamMoveForwardOneBlock(os);
 }
 
-static void encryptCTR__(const KeyExpansion_t* ke_p, const uint8_t* counter00, struct InputStream* is, struct OutputStream* os){
+static void encryptCTR__(
+  const KeyExpansion_t* ke_p,
+  const uint8_t* counter00,
+  struct InputStream* is,
+  struct OutputStream* os
+){
   Block_t* buffer = BlockCreateZero();
   struct Counter counter;
   CounterWriteFromBytes(&counter, counter00);
-  for(size_t i = 0; i < is->info.sizeInBlocks; i++){
+  size_t i = 0;
+#ifdef CF_ENABLE_AESNI
+  if (cf_cpu_has_aesni()) {
+    uint8_t ctr_buf[4 * BLOCK_SIZE];
+    uint8_t ks_buf[4 * BLOCK_SIZE];
+    for (; i + 4 <= is->info.sizeInBlocks; i += 4) {
+      /* Build 4 consecutive counter blocks then advance the counter. */
+      memcpy(ctr_buf +  0, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      memcpy(ctr_buf + 16, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      memcpy(ctr_buf + 32, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      memcpy(ctr_buf + 48, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      encryptBlocks4_ni(ctr_buf, ke_p, ks_buf);
+      for (int j = 0; j < 4 * BLOCK_SIZE; j++) {
+        os->currentPossition[j] =
+          is->currentPossition[j] ^ ks_buf[j];
+      }
+      is->currentPossition += 4 * BLOCK_SIZE;
+      os->currentPossition += 4 * BLOCK_SIZE;
+    }
+  }
+#endif
+  for (; i < is->info.sizeInBlocks; i++){
     applyCTRencryptionStepMoveForward(ke_p, is, &counter, buffer, os);
   }
-  for(size_t i = 0; i < is->info.tailSize; i++){                // -Encrypting tail of the stream.
-    os->currentPossition[i] ^= counter.uint08_[i];
+  for(size_t j = 0; j < is->info.tailSize; j++){  // -Encrypting tail of the stream.
+    os->currentPossition[j] ^= counter.uint08_[j];
   }
   BlockDestroy(&buffer);
 }
