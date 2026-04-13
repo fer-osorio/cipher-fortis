@@ -41,5 +41,27 @@ enum ExceptionCode decryptBlock_ni(
 CF_TARGET_AESNI
 void aes_ni_populate_keys(KeyExpansion_t *ke);
 
+/*
+ * Stride-4 block cipher: encrypt / decrypt 4 * BLOCK_SIZE bytes in one call
+ * by interleaving four independent AES pipelines.  This hides the ~4-cycle
+ * AES-NI latency and is the building block for Phase 4 ECB / CTR parallelism.
+ *
+ * in  — 4 * BLOCK_SIZE (64) input  bytes; must not alias out.
+ * out — 4 * BLOCK_SIZE (64) output bytes.
+ */
+CF_TARGET_AESNI
+void encryptBlocks4_ni(
+  const uint8_t *in,
+  const KeyExpansion_t *ke_p,
+  uint8_t *out
+);
+
+CF_TARGET_AESNI
+void decryptBlocks4_ni(
+  const uint8_t *in,
+  const KeyExpansion_t *ke_p,
+  uint8_t *out
+);
+
 #endif /* CF_ENABLE_AESNI */
 #endif /* CF_AES_NI_H */
