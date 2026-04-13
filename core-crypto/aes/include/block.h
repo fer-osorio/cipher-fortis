@@ -22,6 +22,19 @@ typedef union Word_ {
 
 #define BLOCK_SIZE_INT64 2
 
+/*
+ * Block_t stores the AES 4×4 state matrix in ROW-MAJOR order:
+ *   uint08_[4*r + c]  ==  state[row r][col c]
+ *
+ * FIPS 197 fills the state COLUMN by column from the input byte stream,
+ * so raw input byte i maps to state[i%4][i/4].  BlockFromBytes therefore
+ * transposes: it writes input[c*4 + r] into uint08_[4*r + c].
+ * BytesFromBlock is the inverse (row-major Block_t → column-major bytes).
+ *
+ * AES-NI XMM operands expect column-major byte order, which is identical
+ * to the FIPS 197 raw-byte order.  Raw byte buffers can therefore be
+ * loaded directly with _mm_loadu_si128 — no shuffle needed.
+ */
 typedef union Block_ {
   uint8_t  uint08_[BLOCK_SIZE];
   Word_t   word_[NB];
