@@ -93,21 +93,24 @@ Cipher::OperationMode::OperationMode(Identifier ID) : ID_(ID){
         case Identifier::CBC:
         case Identifier::OFB:
         case Identifier::CTR: {     // Initialize initial vector/counter with encrypted block
-            union {
-                uint8_t  data08[KEY_EXPANSION_LENGTH_128_BYTES];
-                uint64_t data64[KEY_EXPANSION_LENGTH_128_UINT64];
-            } dummyKeyExpansion;
-
-            uint64_t initialValue = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-            for(size_t i = 0; i < KEY_EXPANSION_LENGTH_128_UINT64; i++) dummyKeyExpansion.data64[i] = initialValue++;
-            union {
-                uint8_t  data08[BLOCK_SIZE];
-                uint64_t data64[2];
-            } dummyBlock;
-            dummyBlock.data64[0] = initialValue++;
-            dummyBlock.data64[1] = initialValue;
+            /* Use plain byte arrays with memcpy instead of union type-punning.
+             * Writing through one union member and reading through another is
+             * C++ UB; GCC 15 with -O3 -flto exploits this by reusing the union
+             * storage for other stack variables, corrupting heap pointers. */
+            uint8_t dummyKeyExpansion[KEY_EXPANSION_LENGTH_128_BYTES];
+            uint64_t initialValue =
+                std::chrono::high_resolution_clock::now().time_since_epoch().count();
+            for(size_t i = 0; i < KEY_EXPANSION_LENGTH_128_UINT64; i++) {
+                uint64_t v = initialValue++;
+                std::memcpy(dummyKeyExpansion + i * sizeof(uint64_t), &v, sizeof(uint64_t));
+            }
+            uint8_t dummyBlock[BLOCK_SIZE];
+            uint64_t v0 = initialValue++;
+            uint64_t v1 = initialValue;
+            std::memcpy(dummyBlock,                   &v0, sizeof(uint64_t));
+            std::memcpy(dummyBlock + sizeof(uint64_t), &v1, sizeof(uint64_t));
             this->IV_ = new InitVector;
-            encryptECB(dummyBlock.data08, BLOCK_SIZE, dummyKeyExpansion.data08, 128, this->IV_->data);
+            encryptECB(dummyBlock, BLOCK_SIZE, dummyKeyExpansion, 128, this->IV_->data);
             break;
         }
         case Identifier::Unknown:
