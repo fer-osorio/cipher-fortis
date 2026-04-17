@@ -30,3 +30,7 @@ if(CF_ENABLE_AESNI)
 else()
     message(STATUS "AES-NI acceleration: disabled")
 endif()
+
+set_source_files_properties(src/key_expansion.c PROPERTIES
+    COMPILE_FLAGS "-fno-lto"
+)
