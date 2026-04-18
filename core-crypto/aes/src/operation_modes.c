@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#ifdef CF_ENABLE_AESNI
+#  include "aes_ni.h"
+#  include "cpu_features.h"
+#endif
 
 /**
  * @struct Stream
@@ -213,8 +217,19 @@ static void encryptECB__(
   const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os
 ){
   Block_t* buffer = BlockCreateZero();
-  // Encrypting the blocks
-  for(size_t i = 0; i < is->info.sizeInBlocks; i++) {
+  size_t i = 0;
+#ifdef CF_ENABLE_AESNI
+  if (cf_cpu_has_aesni()) {
+    for (; i + 4 <= is->info.sizeInBlocks; i += 4) {
+      encryptBlocks4_ni(
+        is->currentPossition, ke_p, os->currentPossition
+      );
+      is->currentPossition += 4 * BLOCK_SIZE;
+      os->currentPossition += 4 * BLOCK_SIZE;
+    }
+  }
+#endif
+  for (; i < is->info.sizeInBlocks; i++) {
     encryptBlockMoveForward(ke_p, is, buffer, os);
   }
   BlockDestroy(&buffer);
@@ -228,8 +243,8 @@ static void encryptECB__(
 
 #define BUILD_KEYEXPANSION_FROMBYTES(ke_p,source,keylenbits) \
   KeyExpansion_t* ke_p = KeyExpansionCreateZero(keylenbits); \
-  KeyExpansionReadFromBytes(ke_p, source); \
-  if(ke_p == NULL) return NullKeyExpansion;
+  if(ke_p == NULL) return NullKeyExpansion; \
+  KeyExpansionReadFromBytes(ke_p, source);
 
 #define BUILD_STREAMS(is,os) \
   struct InputStream is = InputStreamInitialize(input, size); \
@@ -253,10 +268,23 @@ enum ExceptionCode encryptECB(const uint8_t*const input, size_t size, const uint
  * @brief Implementation of ECB decryption operation mode.
  * @warning Supposes the input parameters are already validated.
  * */
-static void decryptECB__(const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os){
+static void decryptECB__(
+  const KeyExpansion_t* ke_p, struct InputStream* is, struct OutputStream* os
+){
   Block_t* buffer = BlockCreateZero();
-  // Encrypting the blocks
-  for(size_t i = 0; i < is->info.sizeInBlocks; i++) {
+  size_t i = 0;
+#ifdef CF_ENABLE_AESNI
+  if (cf_cpu_has_aesni()) {
+    for (; i + 4 <= is->info.sizeInBlocks; i += 4) {
+      decryptBlocks4_ni(
+        is->currentPossition, ke_p, os->currentPossition
+      );
+      is->currentPossition += 4 * BLOCK_SIZE;
+      os->currentPossition += 4 * BLOCK_SIZE;
+    }
+  }
+#endif
+  for (; i < is->info.sizeInBlocks; i++) {
     decryptBlockMoveForward(ke_p, is, buffer, os);
   }
   BlockDestroy(&buffer);
@@ -391,7 +419,9 @@ enum ExceptionCode decryptCBC(const uint8_t*const input, size_t size, const uint
  * @param[out] os Output stream where the cipher text will be written
  * @warning Moves all the streams parameters (is, os) one block forward. It also supposes a well-initialized keystream.
  */
-static void applyOFBencryptionStepMoveForward(const KeyExpansion_t* ke_p, struct InputStream* is, Block_t* keystream, struct OutputStream* os){
+static void applyOFBencryptionStepMoveForward(
+  const KeyExpansion_t* ke_p, struct InputStream* is, Block_t* keystream, struct OutputStream* os
+){
   encryptBlock(keystream, ke_p, keystream, false);
   BytesXORBlockTo(is->currentPossition, keystream, os->currentPossition);
   InputStreamMoveForwardOneBlock(is);
@@ -401,20 +431,41 @@ static void applyOFBencryptionStepMoveForward(const KeyExpansion_t* ke_p, struct
 /**
  * @brief Implementation of OFB operation mode for encryption.
  */
-static void encryptOFB__(const KeyExpansion_t* ke_p, const uint8_t* IV, struct InputStream* is, struct OutputStream* os){
+static void encryptOFB__(
+  const KeyExpansion_t* ke_p, const uint8_t* IV, struct InputStream* is, struct OutputStream* os
+){
   Block_t* keystream = BlockCreate(IV);
   for(size_t i = 0; i < is->info.sizeInBlocks; i++) {           // -Encryption of data stream.
     applyOFBencryptionStepMoveForward(ke_p, is, keystream, os);
   }
-  uint8_t tmp[BLOCK_SIZE];
-  BytesFromBlock(keystream, tmp);
-  for(size_t i = 0; i < is->info.tailSize; i++){                // -Encrypting tail of the stream.
-    os->currentPossition[i] = is->currentPossition[i] ^ tmp[i];
+  if(is->info.tailSize > 0) {
+    /* The stream-position guard in InputStreamMoveForwardOneBlock stops
+     * advancing at lastBlock, so currentPossition cannot be used to find
+     * the tail bytes.  Use absolute addressing instead.
+     * The keystream is at E^sizeInBlocks(IV) after the loop; the tail
+     * requires E^(sizeInBlocks+1)(IV), so one more encryption is needed. */
+    encryptBlock(keystream, ke_p, keystream, false);
+    uint8_t tmp[BLOCK_SIZE];
+    BytesFromBlock(keystream, tmp);
+    const uint8_t* tail_in =
+        is->info.start + is->info.sizeInBlocks * BLOCK_SIZE;
+    uint8_t* tail_out =
+        (uint8_t*)os->info.start + os->info.sizeInBlocks * BLOCK_SIZE;
+    for(size_t i = 0; i < is->info.tailSize; i++){              // -Encrypting tail of the stream.
+      tail_out[i] = tail_in[i] ^ tmp[i];
+    }
   }
   BlockDestroy(&keystream);
 }
 
-enum ExceptionCode encryptOFB(const uint8_t*const input, size_t size, const uint8_t* keyexpansion, size_t keylenbits, const uint8_t* IV, uint8_t*const output){
+enum ExceptionCode encryptOFB(
+  const uint8_t*const input,
+  size_t size,
+  const uint8_t* keyexpansion,
+  size_t keylenbits,
+  const uint8_t* IV,
+  uint8_t*const output
+){
   VALIDATE_ENCRYPTION_INPUT_OUTPUT_SOURCES(input,size,keyexpansion,output)
   if(IV == NULL) return NullInitialVector;
   BUILD_KEYEXPANSION_FROMBYTES(ke_p,keyexpansion,keylenbits)
@@ -461,7 +512,9 @@ static void CounterIncrease(struct Counter*const counter){
     }
 }
 
-static void applyCTRencryptionStepMoveForward(const KeyExpansion_t* ke_p, struct InputStream* is, struct Counter*const counter, Block_t*const buffer, struct OutputStream* os){
+static void applyCTRencryptionStepMoveForward(
+  const KeyExpansion_t* ke_p, struct InputStream* is, struct Counter*const counter, Block_t*const buffer, struct OutputStream* os
+){
   BlockFromBytes(buffer, counter->uint08_);
   encryptBlock(buffer, ke_p, buffer, false);
   BytesXORBlockTo(is->currentPossition, buffer, os->currentPossition);
@@ -470,20 +523,70 @@ static void applyCTRencryptionStepMoveForward(const KeyExpansion_t* ke_p, struct
   OutputStreamMoveForwardOneBlock(os);
 }
 
-static void encryptCTR__(const KeyExpansion_t* ke_p, const uint8_t* counter00, struct InputStream* is, struct OutputStream* os){
+static void encryptCTR__(
+  const KeyExpansion_t* ke_p,
+  const uint8_t* counter00,
+  struct InputStream* is,
+  struct OutputStream* os
+){
   Block_t* buffer = BlockCreateZero();
   struct Counter counter;
   CounterWriteFromBytes(&counter, counter00);
-  for(size_t i = 0; i < is->info.sizeInBlocks; i++){
+  size_t i = 0;
+#ifdef CF_ENABLE_AESNI
+  if (cf_cpu_has_aesni()) {
+    uint8_t ctr_buf[4 * BLOCK_SIZE];
+    uint8_t ks_buf[4 * BLOCK_SIZE];
+    for (; i + 4 <= is->info.sizeInBlocks; i += 4) {
+      /* Build 4 consecutive counter blocks then advance the counter. */
+      memcpy(ctr_buf +  0, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      memcpy(ctr_buf + 16, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      memcpy(ctr_buf + 32, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      memcpy(ctr_buf + 48, counter.uint08_, BLOCK_SIZE);
+      CounterIncrease(&counter);
+      encryptBlocks4_ni(ctr_buf, ke_p, ks_buf);
+      for (int j = 0; j < 4 * BLOCK_SIZE; j++) {
+        os->currentPossition[j] =
+          is->currentPossition[j] ^ ks_buf[j];
+      }
+      is->currentPossition += 4 * BLOCK_SIZE;
+      os->currentPossition += 4 * BLOCK_SIZE;
+    }
+  }
+#endif
+  for (; i < is->info.sizeInBlocks; i++){
     applyCTRencryptionStepMoveForward(ke_p, is, &counter, buffer, os);
   }
-  for(size_t i = 0; i < is->info.tailSize; i++){                // -Encrypting tail of the stream.
-    os->currentPossition[i] ^= counter.uint08_[i];
+  if(is->info.tailSize > 0) {
+    /* currentPossition is stuck at lastBlock due to the stream-position
+     * guard; use absolute addressing to reach the actual tail bytes.
+     * Encrypt the counter to produce the keystream before XOR. */
+    BlockFromBytes(buffer, counter.uint08_);
+    encryptBlock(buffer, ke_p, buffer, false);
+    uint8_t ks_tail[BLOCK_SIZE];
+    BytesFromBlock(buffer, ks_tail);
+    const uint8_t* tail_in =
+        is->info.start + is->info.sizeInBlocks * BLOCK_SIZE;
+    uint8_t* tail_out =
+        (uint8_t*)os->info.start + os->info.sizeInBlocks * BLOCK_SIZE;
+    for(size_t j = 0; j < is->info.tailSize; j++){  // -Encrypting tail of the stream.
+      tail_out[j] = tail_in[j] ^ ks_tail[j];
+    }
   }
   BlockDestroy(&buffer);
 }
 
-enum ExceptionCode encryptCTR(const uint8_t*const input, size_t size, const uint8_t* keyexpansion, size_t keylenbits, const uint8_t* counter00, uint8_t*const output){
+enum ExceptionCode encryptCTR(
+  const uint8_t*const input,
+  size_t size,
+  const uint8_t* keyexpansion,
+  size_t keylenbits,
+  const uint8_t* counter00,
+  uint8_t*const output
+  ){
   VALIDATE_ENCRYPTION_INPUT_OUTPUT_SOURCES(input,size,keyexpansion,output)
   if(counter00 == NULL) return NullInitialVector;
   BUILD_KEYEXPANSION_FROMBYTES(ke_p,keyexpansion,keylenbits)
