@@ -23,7 +23,8 @@
 - `revert`: Revert a previous commit
 
 ## Rules
-- Subject: imperative mood, lowercase, no period, ≤50 chars
-- Body: optional, explain what and why (not how)
-- Footer: optional, reference issues (e.g., "Closes #123")
+- subject: imperative mood, lowercase, no period, ≤50 chars
+- scope: optional, describe the section of the modified codebase
+- body: optional, explain what and why (not how)
+- footer: optional, reference issues (e.g., "Closes #123")
 - Breaking changes: add `BREAKING CHANGE:` in footer or `!` after type/scope
