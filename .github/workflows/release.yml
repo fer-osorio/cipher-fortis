@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    container: debian:bookworm
     permissions:
       contents: write      # required to create a release and upload assets
 
