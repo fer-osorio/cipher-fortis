@@ -1,3 +1,5 @@
+option(CF_BUILD_BENCHMARKS "Build AES throughput benchmark (off by default)" OFF)
+
 # ── Shared fixture library ────────────────────────────────────────────────────
 add_library(ciphfortis_test_fixtures STATIC
     src/file_base_fixture.cpp
@@ -85,3 +87,19 @@ add_custom_target(run-integration
 add_custom_target(run-system
     COMMAND ${CMAKE_CTEST_COMMAND} -L system --output-on-failure
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# ── Benchmark harness ─────────────────────────────────────────────────────────
+if(CF_BUILD_BENCHMARKS)
+    add_executable(bench_aes benchmark/bench_aes.c)
+    target_include_directories(bench_aes PRIVATE
+        ${CMAKE_SOURCE_DIR}/core-crypto/aes/include
+    )
+    target_link_libraries(bench_aes PRIVATE
+        ciphfortis_aes
+        ciphfortis::compile_options_c
+    )
+    set_target_properties(bench_aes PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY
+            ${CMAKE_BINARY_DIR}/tests/bin/benchmark
+    )
+endif()
