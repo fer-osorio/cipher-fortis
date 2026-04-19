@@ -1,5 +1,5 @@
 #include "../include/file_base_fixture.hpp"
-#include <fstream>
+#include "../include/file_write_utils.hpp"
 
 void FileBaseFixture::SetUp()    { setupTestEnvironment(); }
 void FileBaseFixture::TearDown() { cleanupTestEnvironment(); }
@@ -19,8 +19,5 @@ void FileBaseFixture::cleanupTestEnvironment() {
 }
 
 void FileBaseFixture::createBinaryFile(const fs::path& path, size_t size) {
-    // Write bytes 0x00, 0x01, 0x02, ... (mod 256) — known, deterministic content.
-    std::ofstream f(path, std::ios::binary);
-    for (size_t i = 0; i < size; i++)
-        f.put(static_cast<char>(i & 0xFF));
+    TestUtils::IO::write_binary_file(path, size);
 }
