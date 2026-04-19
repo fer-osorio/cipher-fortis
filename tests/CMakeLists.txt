@@ -3,6 +3,7 @@ option(CF_BUILD_BENCHMARKS "Build AES throughput benchmark (off by default)" OFF
 # ── Shared fixture library ────────────────────────────────────────────────────
 add_library(ciphfortis_test_fixtures STATIC
     src/file_base_fixture.cpp
+    src/file_write_utils.cpp
     src/raster_image_fixture.cpp
     src/system_workflows.cpp
 )
