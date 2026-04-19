@@ -4,6 +4,7 @@
 #include "../include/raster_image_fixture.hpp"  // pulls in <gtest/gtest.h>
 #include <gtest/gtest.h>
 #include "../include/system_workflows.hpp"
+#include "../include/file_write_utils.hpp"
 #include "../../file-handlers/include/bitmap.hpp"
 #include "../../file-handlers/include/png_image.hpp"
 #include "../../file-handlers/include/jpeg_image.hpp"
@@ -21,14 +22,10 @@ int SystemUtils::execute_cli_command(const std::string& command) {
 }
 
 // Helper to create text files
-void SystemUtils::create_text_file(const std::string& filepath, const std::string& content) {
-    std::ofstream file;
-    file.open(filepath);
-    if(!file){
-        throw std::runtime_error("Failed to create file: " + filepath);
-    }
-    file << content;
-    file.close();
+void SystemUtils::create_text_file(
+    const std::string& filepath, const std::string& content
+) {
+    TestUtils::IO::write_text_file(fs::path(filepath), content);
 }
 
 // Helper to create binary files
@@ -45,34 +42,19 @@ void SystemUtils::create_binary_file(const std::string& filepath, const std::vec
 }
 
 // Helper to create binary files
-void SystemUtils::create_binary_file(const std::string& filepath, std::function<uint8_t(size_t)> generator, size_t file_size) {
-    std::ofstream file;
-    file.open(filepath, std::ios::binary);
-    if(!file){
-        throw std::runtime_error("Failed to create file: " + filepath);
-    }
-    std::vector<uint8_t> content(file_size);
-    for(size_t i = 0; i < file_size; i++) content[i] = generator(i);
-    if(!file.write(reinterpret_cast<const char*>(content.data()), content.size()) ){
-        throw std::runtime_error("Failed to write file: " + filepath);
-    }
-    file.close();
+void SystemUtils::create_binary_file(
+    const std::string& filepath,
+    std::function<uint8_t(size_t)> generator,
+    size_t file_size
+) {
+    TestUtils::IO::write_binary_file(fs::path(filepath), generator, file_size);
 }
 
 // Helper to read file content
-std::vector<uint8_t> SystemUtils::read_file(const std::string& filepath, bool isBinary) {
-    std::ifstream file;
-    if(isBinary) file.open(filepath, std::ios::binary);
-    else file.open(filepath);
-    if(!file){
-        throw std::runtime_error("Failed to open file: " + filepath);
-    }
-    size_t size = std::filesystem::file_size(filepath);
-    std::vector<uint8_t> content(size);
-    if (!file.read(reinterpret_cast<char*>(content.data()), size)) {
-        throw std::runtime_error("Failed to read file: " + filepath);
-    }
-    return content;
+std::vector<uint8_t> SystemUtils::read_file(
+    const std::string& filepath, bool isBinary
+) {
+    return TestUtils::IO::read_file(fs::path(filepath), isBinary);
 }
 
 std::string SystemUtils::toFileExtension(FileFormat ff){
