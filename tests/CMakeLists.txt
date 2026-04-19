@@ -4,6 +4,7 @@ option(CF_BUILD_BENCHMARKS "Build AES throughput benchmark (off by default)" OFF
 add_library(ciphfortis_test_fixtures STATIC
     src/asset_factory.cpp
     src/binary_asset_factory.cpp
+    src/bitmap_asset_factory.cpp
     src/file_base_fixture.cpp
     src/file_write_utils.cpp
     src/raster_asset_utils.cpp
