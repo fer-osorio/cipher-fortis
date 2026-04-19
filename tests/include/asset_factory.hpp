@@ -11,6 +11,7 @@ public:
     virtual fs::path    make_valid(const fs::path& dir) const = 0;
     virtual fs::path    make_large(const fs::path& dir) const = 0;
     virtual std::string extension()                     const = 0;
+    virtual bool        is_binary()                     const { return true; }
 
     // Non-virtual: format-independent implementations.
     fs::path make_corrupt(const fs::path& dir) const;
