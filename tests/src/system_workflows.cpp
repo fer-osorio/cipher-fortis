@@ -10,7 +10,6 @@
 #include "../../file-handlers/include/jpeg_image.hpp"
 #include "../../core-crypto/include/key.hpp"
 #include <filesystem>
-#include <fstream>
 #include <cstdlib>
 #include <string>
 
@@ -19,37 +18,6 @@ using namespace CommandLineToolsTest;
 // Helper function to execute command line tool
 int SystemUtils::execute_cli_command(const std::string& command) {
     return std::system(command.c_str());
-}
-
-// Helper to create text files
-void SystemUtils::create_text_file(
-    const std::string& filepath, const std::string& content
-) {
-    TestUtils::IO::write_text_file(fs::path(filepath), content);
-}
-
-// Helper to create binary files
-void SystemUtils::create_binary_file(
-    const std::string& filepath, const std::vector<uint8_t>& content
-) {
-    std::ofstream file;
-    file.open(filepath, std::ios::binary);
-    if(!file){
-        throw std::runtime_error("Failed to create file: " + filepath);
-    }
-    if(!file.write(reinterpret_cast<const char*>(content.data()), content.size()) ){
-        throw std::runtime_error("Failed to write file: " + filepath);
-    }
-    file.close();
-}
-
-// Helper to create binary files
-void SystemUtils::create_binary_file(
-    const std::string& filepath,
-    std::function<uint8_t(size_t)> generator,
-    size_t file_size
-) {
-    TestUtils::IO::write_binary_file(fs::path(filepath), generator, file_size);
 }
 
 // Helper to read file content

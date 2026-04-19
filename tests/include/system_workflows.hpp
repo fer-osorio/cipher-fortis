@@ -1,5 +1,4 @@
 #include <filesystem>
-#include <functional>
 #include <string>
 #include <vector>
 #include "asset_factory.hpp"
@@ -10,21 +9,6 @@ namespace CommandLineToolsTest{
 namespace SystemUtils {
     // Helper function to execute command line tool
     int execute_cli_command(const std::string& command);
-
-    // Helper to create text files
-    void create_text_file(const std::string& filepath, const std::string& content);
-
-    // Helper to create binary files
-    void create_binary_file(
-        const std::string& filepath, const std::vector<uint8_t>& content
-    );
-
-    // Helper to create binary files
-    void create_binary_file(
-        const std::string& filepath,
-        std::function<uint8_t(size_t)> generator,
-        size_t file_size
-    );
 
     // Helper to read file content
     std::vector<uint8_t> read_file(const std::string& filepath, bool isBinary);
