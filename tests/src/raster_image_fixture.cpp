@@ -1,69 +1,45 @@
 #include "../include/raster_image_fixture.hpp"
-#include "../../third-party/stb/stb_image_write.h"
-#include <fstream>
-#include <vector>
+#include "../include/raster_asset_utils.hpp"
+#include "../include/file_write_utils.hpp"
 
-void RasterImageFixture::SetUp()    { setupTestEnvironment(); }
-void RasterImageFixture::TearDown() { cleanupTestEnvironment(); }
+void RasterImageFixture::SetUp() {
+    this->validPngPath    = env_.path() / "valid_10x10.png";
+    this->smallPngPath    = env_.path() / "small_2x2.png";
+    this->largePngPath    = env_.path() / "large_100x100.png";
+    this->corruptPath     = env_.path() / "corrupt.png";
+    this->emptyPath       = env_.path() / "empty.png";
+    this->nonexistentPath = env_.path() / "does_not_exist.png";
+    this->validJpegPath   = env_.path() / "valid_10x10.jpg";
 
-void RasterImageFixture::setupTestEnvironment() {
-    fs::create_directories(testDataDir);
-    createValidPng(validPngPath, 10, 10);
-    createValidPng(smallPngPath, 2, 2);
-    createValidPng(largePngPath, 100, 100);
-    createCorruptFile(corruptPath);
-    createEmptyFile(emptyPath);
-    createValidJpeg(validJpegPath, 10, 10);
+    TestUtils::Raster::make_png(this->validPngPath,   10, 10);
+    TestUtils::Raster::make_png(this->smallPngPath,    2,  2);
+    TestUtils::Raster::make_png(this->largePngPath,  100, 100);
+    TestUtils::IO::write_binary_file(
+        this->corruptPath,
+        [](size_t i) noexcept -> uint8_t {
+            constexpr uint8_t g[8] = {
+                0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33
+            };
+            return g[i];
+        },
+        8
+    );
+    TestUtils::IO::write_binary_file(this->emptyPath, 0);
+    TestUtils::Raster::make_jpeg(this->validJpegPath, 10, 10);
 }
 
-void RasterImageFixture::cleanupTestEnvironment() {
-    if (fs::exists(testDataDir))
-        fs::remove_all(testDataDir);
-}
+void RasterImageFixture::TearDown() {}
 
 void RasterImageFixture::createValidPng(const fs::path& path, int width, int height) {
-    // Build a known-content RGB image: pixel(x,y) = (x*25, y*25, 128)
-    std::vector<uint8_t> pixels(width * height * 3);
-    for (int y = 0; y < height; y++)
-        for (int x = 0; x < width; x++) {
-            int idx = (y * width + x) * 3;
-            pixels[idx]     = static_cast<uint8_t>(x * 25);
-            pixels[idx + 1] = static_cast<uint8_t>(y * 25);
-            pixels[idx + 2] = 128;
-        }
-    stbi_write_png(path.string().c_str(), width, height, 3, pixels.data(), width * 3);
+    TestUtils::Raster::make_png(path, width, height);
 }
 
 void RasterImageFixture::createValidBmp(const fs::path& path, int width, int height) {
-    std::vector<uint8_t> pixels(width * height * 3);
-    for (int y = 0; y < height; y++)
-        for (int x = 0; x < width; x++) {
-            int idx = (y * width + x) * 3;
-            pixels[idx]     = static_cast<uint8_t>(x * 25);
-            pixels[idx + 1] = static_cast<uint8_t>(y * 25);
-            pixels[idx + 2] = 128;
-        }
-    stbi_write_bmp(path.string().c_str(), width, height, 3, pixels.data());
+    TestUtils::Raster::make_bmp(path, width, height);
 }
 
-void RasterImageFixture::createValidJpeg(const fs::path& path, int width, int height, int quality) {
-    std::vector<uint8_t> pixels(width * height * 3);
-    for (int y = 0; y < height; y++)
-        for (int x = 0; x < width; x++) {
-            int idx = (y * width + x) * 3;
-            pixels[idx]     = static_cast<uint8_t>(x * 25);
-            pixels[idx + 1] = static_cast<uint8_t>(y * 25);
-            pixels[idx + 2] = 128;
-        }
-    stbi_write_jpg(path.string().c_str(), width, height, 3, pixels.data(), quality);
-}
-
-void RasterImageFixture::createCorruptFile(const fs::path& path) {
-    std::ofstream f(path, std::ios::binary);
-    uint8_t garbage[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33 };
-    f.write(reinterpret_cast<char*>(garbage), sizeof(garbage));
-}
-
-void RasterImageFixture::createEmptyFile(const fs::path& path) {
-    std::ofstream f(path, std::ios::binary);
+void RasterImageFixture::createValidJpeg(
+    const fs::path& path, int width, int height, int quality
+) {
+    TestUtils::Raster::make_jpeg(path, width, height, quality);
 }
