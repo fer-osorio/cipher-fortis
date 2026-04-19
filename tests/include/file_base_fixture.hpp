@@ -5,21 +5,25 @@
 #include <filesystem>
 #include <cstdint>
 #include "test_environment.hpp"
+#include "binary_asset_factory.hpp"
 
 namespace fs = std::filesystem;
 
 // Number of bytes written by the fixture's binary test asset.
-static constexpr size_t FILE_BASE_FIXTURE_FILE_SIZE = 64;
+static constexpr size_t FILE_BASE_FIXTURE_FILE_SIZE = 1024;
 
 class FileBaseFixture : public ::testing::Test {
 protected:
-    TestEnvironment  env_{"tests/data/file_base"};
-    const fs::path&  testDataDir   = env_.path();
-    fs::path         validFilePath;
-    fs::path         nonexistentPath;
+    TestEnvironment      env_{"tests/data/file_base"};
+    const fs::path&      testDataDir   = env_.path();
+    fs::path             validFilePath;
+    fs::path             nonexistentPath;
 
     void SetUp() override;
     void TearDown() override;
+
+private:
+    BinaryAssetFactory   factory_;
 };
 
 #endif // FILE_BASE_FIXTURE_HPP
