@@ -6,6 +6,7 @@ add_library(ciphfortis_test_fixtures STATIC
     src/binary_asset_factory.cpp
     src/file_base_fixture.cpp
     src/file_write_utils.cpp
+    src/raster_asset_utils.cpp
     src/raster_image_fixture.cpp
     src/system_workflows.cpp
     src/test_environment.cpp
