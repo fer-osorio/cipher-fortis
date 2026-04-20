@@ -4,6 +4,51 @@ The test suite for CipherFortis is organized in three layers of
 responsibility. Each layer has a single job; nothing bleeds across
 boundaries.
 
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                    Fixtures & test drivers                       ║
+║                                                                  ║
+║   FileBaseFixture     RasterImageFixture        SystemTests      ║
+║   ───────────────     ─────────────────         ───────────      ║
+║   owns env_           owns env_                 owns env_        ║
+║   holds factory_      uses TestUtils::Raster    holds factory_&  ║
+╚══════════╤═══════════════════╤══════════════════════╤═══════════╝
+           │                   │                      │
+           ▼                   ▼                      ▼
+╔══════════════════════════════════════════════════════════════════╗
+║              Layer 3 — Environment lifecycle                     ║
+║                                                                  ║
+║                      TestEnvironment                             ║
+║                  ctor: create_directories                        ║
+║                  dtor: remove_all          (RAII)                ║
+╚══════════════════════════════╤═══════════════════════════════════╝
+                               │ path()
+                               ▼
+╔══════════════════════════════════════════════════════════════════╗
+║              Layer 2 — Asset factories                           ║
+║                                                                  ║
+║                    «abstract» AssetFactory                       ║
+║           make_valid  make_large  extension  is_binary           ║
+║           make_corrupt  make_empty  (non-virtual helpers)        ║
+║                              │                                   ║
+║           ┌──────────────────┼──────────────────┐               ║
+║           ▼                  ▼                  ▼               ║
+║   BinaryAssetFactory  BitmapAssetFactory  TextAssetFactory       ║
+╚══════════╤═══════════════════╤══════════════════════════════════╝
+           │                   │
+           ▼                   ▼
+╔══════════════════════════════════════════════════════════════════╗
+║              Layer 1 — Raw I/O utilities                         ║
+║                                                                  ║
+║      TestUtils::IO                  TestUtils::Raster            ║
+║      ─────────────                  ──────────────────           ║
+║      write_binary_file              make_png                     ║
+║      write_text_file                make_bmp                     ║
+║      read_file                      make_jpeg                    ║
+║      (only user of ofstream)        (only user of stbi_write_*)  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
 ---
 
 ## Layer 1 — Raw I/O utilities (`TestUtils::IO`)
