@@ -4,12 +4,12 @@
 #include "../include/raster_image_fixture.hpp"  // pulls in <gtest/gtest.h>
 #include <gtest/gtest.h>
 #include "../include/system_workflows.hpp"
+#include "../include/file_write_utils.hpp"
 #include "../../file-handlers/include/bitmap.hpp"
 #include "../../file-handlers/include/png_image.hpp"
 #include "../../file-handlers/include/jpeg_image.hpp"
 #include "../../core-crypto/include/key.hpp"
 #include <filesystem>
-#include <fstream>
 #include <cstdlib>
 #include <string>
 
@@ -20,155 +20,41 @@ int SystemUtils::execute_cli_command(const std::string& command) {
     return std::system(command.c_str());
 }
 
-// Helper to create text files
-void SystemUtils::create_text_file(const std::string& filepath, const std::string& content) {
-    std::ofstream file;
-    file.open(filepath);
-    if(!file){
-        throw std::runtime_error("Failed to create file: " + filepath);
-    }
-    file << content;
-    file.close();
-}
-
-// Helper to create binary files
-void SystemUtils::create_binary_file(const std::string& filepath, const std::vector<uint8_t>& content) {
-    std::ofstream file;
-    file.open(filepath, std::ios::binary);
-    if(!file){
-        throw std::runtime_error("Failed to create file: " + filepath);
-    }
-    if(!file.write(reinterpret_cast<const char*>(content.data()), content.size()) ){
-        throw std::runtime_error("Failed to write file: " + filepath);
-    }
-    file.close();
-}
-
-// Helper to create binary files
-void SystemUtils::create_binary_file(const std::string& filepath, std::function<uint8_t(size_t)> generator, size_t file_size) {
-    std::ofstream file;
-    file.open(filepath, std::ios::binary);
-    if(!file){
-        throw std::runtime_error("Failed to create file: " + filepath);
-    }
-    std::vector<uint8_t> content(file_size);
-    for(size_t i = 0; i < file_size; i++) content[i] = generator(i);
-    if(!file.write(reinterpret_cast<const char*>(content.data()), content.size()) ){
-        throw std::runtime_error("Failed to write file: " + filepath);
-    }
-    file.close();
-}
-
 // Helper to read file content
-std::vector<uint8_t> SystemUtils::read_file(const std::string& filepath, bool isBinary) {
-    std::ifstream file;
-    if(isBinary) file.open(filepath, std::ios::binary);
-    else file.open(filepath);
-    if(!file){
-        throw std::runtime_error("Failed to open file: " + filepath);
-    }
-    size_t size = std::filesystem::file_size(filepath);
-    std::vector<uint8_t> content(size);
-    if (!file.read(reinterpret_cast<char*>(content.data()), size)) {
-        throw std::runtime_error("Failed to read file: " + filepath);
-    }
-    return content;
+std::vector<uint8_t> SystemUtils::read_file(
+    const std::string& filepath, bool isBinary
+) {
+    return TestUtils::IO::read_file(fs::path(filepath), isBinary);
 }
 
-std::string SystemUtils::toFileExtension(FileFormat ff){
-    switch(ff){
-        case FileFormat::UNKNOWN:
-            return std::string("");
-        case FileFormat::BINARY:
-            return std::string("bin");
-        case FileFormat::TEXT:
-            return std::string("txt");
-        case FileFormat::BITMAP:
-            return std::string("bmp");
-    }
-    return std::string("");
+void SystemTests::setupTestEnvironment() {
+    this->originalValidPath          = factory_.make_valid(env_.path());
+    this->originalLargePath          = factory_.make_large(env_.path());
+    this->nonexistentPath            = env_.path() / (
+        "does_not_exist." + factory_.extension()
+    );
+    this->encryptedOriginalValidPath = env_.path() / (
+        "encrypted_original_valid." + factory_.extension()
+    );
+    this->decryptedOriginalValidPath = env_.path() / (
+        "decrypted_original_valid." + factory_.extension()
+    );
+    this->encryptedOriginalLargePath = env_.path() / (
+        "encrypted_original_large." + factory_.extension()
+    );
+    this->decryptedOriginalLargePath = env_.path() / (
+        "decrypted_original_large." + factory_.extension()
+    );
+    this->keyPath = env_.path() / "key.bin";
 }
 
-void SystemTests::setupTestEnvironment(FileFormat ff){
-    // Create test data directory
-    if (!fs::exists(this->testDataDir)) {
-        fs::create_directory(this->testDataDir);
-    }
-    if(ff != FileFormat::UNKNOWN){
-        // Valid and large test file paths
-        this->originalValidPath += "." + SystemUtils::toFileExtension(ff);
-        this->originalLargePath += "." + SystemUtils::toFileExtension(ff);
-        // Non-existent test file path
-        this->nonexistentPath += "." + SystemUtils::toFileExtension(ff);
-        // Encrypted and decrypted file paths
-        this->encryptedOriginalValidPath += "." + SystemUtils::toFileExtension(ff);
-        this->decryptedOriginalValidPath += "." + SystemUtils::toFileExtension(ff);
-        this->encryptedOriginalLargePath += "." + SystemUtils::toFileExtension(ff);
-        this->decryptedOriginalLargePath += "." + SystemUtils::toFileExtension(ff);
-    }
-    switch(ff){
-        case FileFormat::UNKNOWN:
-        case FileFormat::BINARY: {
-            auto generator = [](size_t i) noexcept -> uint8_t{
-                    return i & 0xFF;                                            // Equivalent to i % 256
-            };
-            SystemUtils::create_binary_file(
-                this->originalValidPath, generator, 1024 // Building valid file
-            );
-            SystemUtils::create_binary_file(
-                this->originalLargePath, generator, 1024*1024*3 // Building large file
-            );
-            }
-            break;
-        case FileFormat::TEXT: {
-            SystemUtils::create_text_file(                                      // Building valid file
-                this->originalValidPath,
-                "Everything that you thought had meaning: every hope, dream, or moment of happiness. "
-                "None of it matters as you lie bleeding out on the battlefield. None of it changes "
-                "what a speeding rock does to a body, we all die. But does that mean our lives are "
-                "meaningless? Does that mean that there was no point in our being born? Would you "
-                "say that of our slain comrades? What about their lives? Were they meaningless?... "
-                "They were not! Their memory serves as an example to us all! The courageous fallen! "
-                "The anguished fallen! Their lives have meaning because we the living refuse to forget "
-                "them! And as we ride to certain death, we trust our successors to do the same for us! "
-                "Because my soldiers do not buckle or yield when faced with the cruelty of this world! "
-                "My soldiers push forward! My soldiers scream out! My soldiers RAAAAAGE!\n"
-                "\n\t~ Erwin's famous and final speech as he leads the Survey Corps on a suicide charge."
-            );
-            const std::vector<char> large_file_content(1024*1024*3, 'z');       // Building large file
-            SystemUtils::create_text_file(
-                this->originalLargePath,
-                std::string(large_file_content.data(),
-                large_file_content.size())
-            );
-            }
-            break;
-        case FileFormat::BITMAP:
-            RasterImageFixture::createValidBmp(this->originalValidPath, 32, 32);      // Building valid file
-            RasterImageFixture::createValidBmp(this->originalLargePath, 4096, 4096);  // Building large file
-            break;
-    }
+SystemTests::SystemTests(
+    const std::string& executable_path_, const AssetFactory& factory
+) : executable_path(executable_path_), factory_(factory), env_("test_data") {
+    this->setupTestEnvironment();
 }
 
-void SystemTests::cleanupTestEnvironment(){
-    // Clean up test files
-    if (fs::exists(this->testDataDir)) {
-        for (auto& entry : fs::directory_iterator(this->testDataDir)) {
-            if (entry.path().filename() != ".gitkeep") {    // Avoid delete directories tracked by git
-                fs::remove(entry.path());
-            }
-        }
-    }
-}
-
-SystemTests::SystemTests(const std::string executable_path_, FileFormat ff):
-    executable_path(executable_path_), ff_(ff) {
-    this->setupTestEnvironment(ff);
-}
-
-SystemTests::~SystemTests(){
-    this->cleanupTestEnvironment();
-}
+SystemTests::~SystemTests() {}
 
 // SYSTEM TEST 1: Complete Text File Encryption Workflow
 bool SystemTests::test_file_encryption_workflow() {
@@ -207,10 +93,10 @@ bool SystemTests::test_file_encryption_workflow() {
 
     // Step 4: Verify encrypted file is different from original
     std::vector<uint8_t> test_content = SystemUtils::read_file(
-        this->originalValidPath, this->ff_ != FileFormat::TEXT
+        this->originalValidPath, factory_.is_binary()
     );
     std::vector<uint8_t> encrypted_content = SystemUtils::read_file(
-        this->encryptedOriginalValidPath, this->ff_ != FileFormat::TEXT
+        this->encryptedOriginalValidPath, factory_.is_binary()
     );
 
     bool contentDiffers = (encrypted_content != test_content);
@@ -236,7 +122,7 @@ bool SystemTests::test_file_encryption_workflow() {
 
     // Step 6: Verify decrypted content matches original
     std::vector<uint8_t> decrypted_content = SystemUtils::read_file(
-        this->decryptedOriginalValidPath, this->ff_ != FileFormat::TEXT
+        this->decryptedOriginalValidPath, factory_.is_binary()
     );
 
     bool contentMatches = (decrypted_content == test_content);
@@ -269,7 +155,7 @@ bool SystemTests::test_file_encryption_workflow() {
 bool SystemTests::test_error_scenarios() {
     bool success = true;
 
-    const fs::path second_key = this->testDataDir / "second_key.bin";
+    const fs::path second_key = this->env_.path() / "second_key.bin";
 
     // Generate two different keys
     SystemUtils::execute_cli_command(
@@ -301,10 +187,10 @@ bool SystemTests::test_error_scenarios() {
     // Either command should fail, or decrypted content should be garbage
     if (decrypt_result == 0 && std::filesystem::exists(this->decryptedOriginalValidPath)) {
         std::vector<uint8_t> original_content = SystemUtils::read_file(
-            this->originalValidPath.string(), this->ff_ != FileFormat::TEXT
+            this->originalValidPath.string(), factory_.is_binary()
         );
         std::vector<uint8_t> decrypted_content = SystemUtils::read_file(
-            this->decryptedOriginalValidPath.string(), this->ff_ != FileFormat::TEXT
+            this->decryptedOriginalValidPath.string(), factory_.is_binary()
         );
         bool wrongKeyProducesGarbage = (decrypted_content != original_content);
         EXPECT_TRUE(wrongKeyProducesGarbage) << "Wrong key should not produce correct plaintext";
@@ -326,7 +212,8 @@ bool SystemTests::test_error_scenarios() {
 
     // Test 3: Invalid key file
     int invalid_key_result = SystemUtils::execute_cli_command(
-        this->executable_path + " --key invalid.key --input " + this->originalValidPath.string() + " --output out.aes"
+        this->executable_path + " --key invalid.key --input " +
+        this->originalValidPath.string() + " --output out.aes"
     );
     bool invalidKeyFails = (invalid_key_result != 0);
     EXPECT_TRUE(invalidKeyFails) << "Using invalid key file should fail";
@@ -346,10 +233,10 @@ bool SystemTests::test_jpeg_encryption_saves_as_png() {
     SystemUtils::execute_cli_command(gen_key_cmd);
 
     // Create a JPEG input
-    const fs::path jpegInput  = this->testDataDir / "jpeg_input.jpg";
-    const fs::path encJpg     = this->testDataDir / "enc.jpg";
-    const fs::path encPng     = this->testDataDir / "enc.png";
-    const fs::path decJpg     = this->testDataDir / "dec.jpg";
+    const fs::path jpegInput  = this->env_.path() / "jpeg_input.jpg";
+    const fs::path encJpg     = this->env_.path() / "enc.jpg";
+    const fs::path encPng     = this->env_.path() / "enc.png";
+    const fs::path decJpg     = this->env_.path() / "dec.jpg";
 
     RasterImageFixture::createValidJpeg(jpegInput, 32, 32);
 
@@ -392,9 +279,13 @@ bool SystemTests::test_jpeg_encryption_saves_as_png() {
 bool SystemTests::test_metadata_round_trip() {
     bool success = true;
 
-    const fs::path metaPath    = this->testDataDir / "meta.json";
-    const fs::path encryptedPath = testDataDir / ("meta_enc." + SystemUtils::toFileExtension(ff_));
-    const fs::path decryptedPath = testDataDir / ("meta_dec." + SystemUtils::toFileExtension(ff_));
+    const fs::path metaPath      = this->env_.path() / "meta.json";
+    const fs::path encryptedPath = env_.path() / (
+        "meta_enc." + factory_.extension()
+    );
+    const fs::path decryptedPath = env_.path() / (
+        "meta_dec." + factory_.extension()
+    );
 
     // Generate key
     std::string gen_key_cmd =
@@ -434,7 +325,9 @@ bool SystemTests::test_metadata_round_trip() {
     success &= decCreated;
 
     if (decCreated) {
-        std::vector<uint8_t> original  = SystemUtils::read_file(this->originalValidPath, true);
+        std::vector<uint8_t> original  = SystemUtils::read_file(
+            this->originalValidPath, true
+        );
         std::vector<uint8_t> decrypted = SystemUtils::read_file(decryptedPath, true);
         bool contentMatches = (original == decrypted);
         EXPECT_TRUE(contentMatches) << "Decrypted content should match original";
@@ -457,8 +350,8 @@ bool SystemTests::test_file_validity() {
 
     // ── BMP ──────────────────────────────────────────────────────────────────
     {
-        const fs::path enc = testDataDir / "validity_enc.bmp";
-        const fs::path dec = testDataDir / "validity_dec.bmp";
+        const fs::path enc = env_.path() / "validity_enc.bmp";
+        const fs::path dec = env_.path() / "validity_dec.bmp";
 
         SystemUtils::execute_cli_command(
             this->executable_path + " --key " + keyPath.string() +
@@ -487,9 +380,9 @@ bool SystemTests::test_file_validity() {
 
     // ── PNG ───────────────────────────────────────────────────────────────────
     {
-        const fs::path pngOrig = testDataDir / "validity_orig.png";
-        const fs::path enc     = testDataDir / "validity_enc.png";
-        const fs::path dec     = testDataDir / "validity_dec.png";
+        const fs::path pngOrig = env_.path() / "validity_orig.png";
+        const fs::path enc     = env_.path() / "validity_enc.png";
+        const fs::path dec     = env_.path() / "validity_dec.png";
         RasterImageFixture::createValidPng(pngOrig, 32, 32);
 
         SystemUtils::execute_cli_command(
@@ -519,9 +412,9 @@ bool SystemTests::test_file_validity() {
 
     // ── JPEG (saved as PNG on encrypt) ────────────────────────────────────────
     {
-        const fs::path jpegOrig = testDataDir / "validity_orig.jpg";
-        const fs::path encPng   = testDataDir / "validity_enc_jpeg.png";
-        const fs::path dec      = testDataDir / "validity_dec_jpeg.jpg";
+        const fs::path jpegOrig = env_.path() / "validity_orig.jpg";
+        const fs::path encPng   = env_.path() / "validity_enc_jpeg.png";
+        const fs::path dec      = env_.path() / "validity_dec_jpeg.jpg";
         RasterImageFixture::createValidJpeg(jpegOrig, 32, 32);
 
         SystemUtils::execute_cli_command(
@@ -563,8 +456,8 @@ bool SystemTests::test_large_file_performance() {
         this->executable_path + " --generate-key --output " + this->keyPath.string()
     );
 
-
-    std::string encrypt_cmd = this->executable_path + " --mode CBC --key " + this->keyPath.string() +
+    std::string encrypt_cmd =
+        this->executable_path + " --mode CBC --key " + this->keyPath.string() +
         " --input " + this->originalLargePath.string() +
         " --output " + this->encryptedOriginalLargePath.string() +
         " --iv 00112233445566778899AABBCCDDEEFF";
@@ -575,7 +468,9 @@ bool SystemTests::test_large_file_performance() {
         encrypt_cmd
     );
     auto encrypt_end = std::chrono::high_resolution_clock::now();
-    auto encrypt_duration = std::chrono::duration_cast<std::chrono::milliseconds>(encrypt_end - start_time);
+    auto encrypt_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        encrypt_end - start_time
+    );
 
     bool encryptSucceeded = (encrypt_result == 0);
     EXPECT_TRUE(encryptSucceeded) << "Large file encryption should succeed";
@@ -589,7 +484,8 @@ bool SystemTests::test_large_file_performance() {
         success &= encryptFast;
     }
 
-    std::string decrypt_cmd = this->executable_path +
+    std::string decrypt_cmd =
+        this->executable_path +
         " --decrypt --mode CBC --key " + this->keyPath.string() +
         " --input " + this->encryptedOriginalLargePath.string() +
         " --output " + this->decryptedOriginalLargePath.string() +
@@ -601,7 +497,9 @@ bool SystemTests::test_large_file_performance() {
         decrypt_cmd
     );
     auto decrypt_end = std::chrono::high_resolution_clock::now();
-    auto decrypt_duration = std::chrono::duration_cast<std::chrono::milliseconds>(decrypt_end - decrypt_start);
+    auto decrypt_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+        decrypt_end - decrypt_start
+    );
 
     bool decryptSucceeded = (decrypt_result == 0);
     EXPECT_TRUE(decryptSucceeded) << "Large file decryption should succeed";
@@ -616,7 +514,7 @@ bool SystemTests::test_large_file_performance() {
     }
 
     // Verify integrity
-    auto original_size = std::filesystem::file_size(this->originalLargePath);
+    auto original_size  = std::filesystem::file_size(this->originalLargePath);
     auto decrypted_size = std::filesystem::file_size(this->decryptedOriginalLargePath);
 
     bool sizeMatches = (original_size == decrypted_size);

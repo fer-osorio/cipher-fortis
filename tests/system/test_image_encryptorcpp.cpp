@@ -2,35 +2,42 @@
 
 #include <gtest/gtest.h>
 #include "../include/system_workflows.hpp"
+#include "../include/bitmap_asset_factory.hpp"
 
 namespace cltt = CommandLineToolsTest;
 
 TEST(SystemTest, FileEncryptionWorkflow) {
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    BitmapAssetFactory factory;
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
     EXPECT_TRUE(st.test_file_encryption_workflow());
 }
 
 TEST(SystemTest, ErrorScenarios) {
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    BitmapAssetFactory factory;
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
     EXPECT_TRUE(st.test_error_scenarios());
 }
 
 TEST(SystemTest, LargeFilePerformance) {
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    BitmapAssetFactory factory;
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
     EXPECT_TRUE(st.test_large_file_performance());
 }
 
 TEST(SystemTest, JpegEncryptSavesAsPng) {
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    BitmapAssetFactory factory;
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
     EXPECT_TRUE(st.test_jpeg_encryption_saves_as_png());
 }
 
 TEST(SystemTest, MetadataRoundTrip) {
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    BitmapAssetFactory factory;
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
     EXPECT_TRUE(st.test_metadata_round_trip());
 }
 
 TEST(SystemTest, FileValidityAfterEncryptDecrypt) {
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, cltt::FileFormat::BITMAP);
+    BitmapAssetFactory factory;
+    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
     EXPECT_TRUE(st.test_file_validity());
 }
