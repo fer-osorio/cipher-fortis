@@ -222,28 +222,31 @@ bool SystemTests::test_error_scenarios() {
     return success;
 }
 
-// SYSTEM TEST 4: JPEG encryption saves output as PNG
-bool SystemTests::test_jpeg_encryption_saves_as_png() {
+// JPEG standalone test — not a SystemTests method; JPEG-specific behaviour only.
+bool CommandLineToolsTest::test_jpeg_saves_as_png(
+    const std::string& executable_path,
+    const fs::path&    working_dir
+) {
     bool success = true;
 
     // Generate key
+    const fs::path keyPath = working_dir / "key.bin";
     std::string gen_key_cmd =
-        this->executable_path + " --generate-key --output " +
-        this->keyPath.string();
+        executable_path + " --generate-key --output " + keyPath.string();
     SystemUtils::execute_cli_command(gen_key_cmd);
 
     // Create a JPEG input
-    const fs::path jpegInput  = this->env_.path() / "jpeg_input.jpg";
-    const fs::path encJpg     = this->env_.path() / "enc.jpg";
-    const fs::path encPng     = this->env_.path() / "enc.png";
-    const fs::path decJpg     = this->env_.path() / "dec.jpg";
+    const fs::path jpegInput = working_dir / "jpeg_input.jpg";
+    const fs::path encJpg    = working_dir / "enc.jpg";
+    const fs::path encPng    = working_dir / "enc.png";
+    const fs::path decJpg    = working_dir / "dec.jpg";
 
     RasterImageFixture::createValidJpeg(jpegInput, 32, 32);
 
     // Encrypt — tool should redirect output to enc.png
     std::string encrypt_cmd =
-        this->executable_path + " --key " + this->keyPath.string() +
-        " --input " + jpegInput.string() +
+        executable_path + " --key " + keyPath.string() +
+        " --input "  + jpegInput.string() +
         " --output " + encJpg.string() +
         " --iv 00112233445566778899AABBCCDDEEFF";
     int enc_result = SystemUtils::execute_cli_command(encrypt_cmd);
@@ -260,8 +263,8 @@ bool SystemTests::test_jpeg_encryption_saves_as_png() {
 
     // Decrypt the PNG back to JPEG
     std::string decrypt_cmd =
-        this->executable_path + " --decrypt --key " + this->keyPath.string() +
-        " --input " + encPng.string() +
+        executable_path + " --decrypt --key " + keyPath.string() +
+        " --input "  + encPng.string() +
         " --output " + decJpg.string() +
         " --iv 00112233445566778899AABBCCDDEEFF";
     int dec_result = SystemUtils::execute_cli_command(decrypt_cmd);
