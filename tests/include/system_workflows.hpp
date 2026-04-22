@@ -30,9 +30,6 @@ public:
     // SYSTEM TEST 3: Performance and Large File Handling
     bool test_large_file_performance();
 
-    // SYSTEM TEST 4: JPEG encryption saves output as PNG
-    bool test_jpeg_encryption_saves_as_png();
-
     // SYSTEM TEST 5: Metadata round-trip (encrypt with --metadata, decrypt with --metadata)
     bool test_metadata_round_trip();
 
@@ -55,5 +52,21 @@ private:
 
     void setupTestEnvironment();
 }; // class SystemTests
+
+/**
+ * @brief Verifies that the CLI redirects JPEG encryption output to PNG.
+ *
+ * This scenario is specific to JPEG and is not part of the generic
+ * SystemTests workflow suite. It is a standalone test of the CLI's
+ * lossy-format redirect behaviour.
+ *
+ * @param executable_path  Path to the image_encryptor binary under test.
+ * @param working_dir      Writable directory for temporary test assets.
+ *                         The caller is responsible for its lifecycle.
+ */
+bool test_jpeg_saves_as_png(
+    const std::string& executable_path,
+    const fs::path&    working_dir
+);
 
 } // namespace CommandLineToolsTest
