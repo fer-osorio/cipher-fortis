@@ -5,10 +5,6 @@
 #include <gtest/gtest.h>
 #include "../include/system_workflows.hpp"
 #include "../include/file_write_utils.hpp"
-#include "../../file-handlers/include/bitmap.hpp"
-#include "../../file-handlers/include/png_image.hpp"
-#include "../../file-handlers/include/jpeg_image.hpp"
-#include "../../core-crypto/include/key.hpp"
 #include <filesystem>
 #include <cstdlib>
 #include <string>
@@ -222,28 +218,31 @@ bool SystemTests::test_error_scenarios() {
     return success;
 }
 
-// SYSTEM TEST 4: JPEG encryption saves output as PNG
-bool SystemTests::test_jpeg_encryption_saves_as_png() {
+// JPEG standalone test — not a SystemTests method; JPEG-specific behaviour only.
+bool CommandLineToolsTest::test_jpeg_saves_as_png(
+    const std::string& executable_path,
+    const fs::path&    working_dir
+) {
     bool success = true;
 
     // Generate key
+    const fs::path keyPath = working_dir / "key.bin";
     std::string gen_key_cmd =
-        this->executable_path + " --generate-key --output " +
-        this->keyPath.string();
+        executable_path + " --generate-key --output " + keyPath.string();
     SystemUtils::execute_cli_command(gen_key_cmd);
 
     // Create a JPEG input
-    const fs::path jpegInput  = this->env_.path() / "jpeg_input.jpg";
-    const fs::path encJpg     = this->env_.path() / "enc.jpg";
-    const fs::path encPng     = this->env_.path() / "enc.png";
-    const fs::path decJpg     = this->env_.path() / "dec.jpg";
+    const fs::path jpegInput = working_dir / "jpeg_input.jpg";
+    const fs::path encJpg    = working_dir / "enc.jpg";
+    const fs::path encPng    = working_dir / "enc.png";
+    const fs::path decJpg    = working_dir / "dec.jpg";
 
     RasterImageFixture::createValidJpeg(jpegInput, 32, 32);
 
     // Encrypt — tool should redirect output to enc.png
     std::string encrypt_cmd =
-        this->executable_path + " --key " + this->keyPath.string() +
-        " --input " + jpegInput.string() +
+        executable_path + " --key " + keyPath.string() +
+        " --input "  + jpegInput.string() +
         " --output " + encJpg.string() +
         " --iv 00112233445566778899AABBCCDDEEFF";
     int enc_result = SystemUtils::execute_cli_command(encrypt_cmd);
@@ -260,8 +259,8 @@ bool SystemTests::test_jpeg_encryption_saves_as_png() {
 
     // Decrypt the PNG back to JPEG
     std::string decrypt_cmd =
-        this->executable_path + " --decrypt --key " + this->keyPath.string() +
-        " --input " + encPng.string() +
+        executable_path + " --decrypt --key " + keyPath.string() +
+        " --input "  + encPng.string() +
         " --output " + decJpg.string() +
         " --iv 00112233445566778899AABBCCDDEEFF";
     int dec_result = SystemUtils::execute_cli_command(decrypt_cmd);
@@ -347,102 +346,41 @@ bool SystemTests::test_file_validity() {
     );
 
     const std::string iv = " --iv 00112233445566778899AABBCCDDEEFF";
+    const fs::path enc = env_.path() / (
+        "validity_enc." + factory_.extension()
+    );
+    const fs::path dec = env_.path() / (
+        "validity_dec." + factory_.extension()
+    );
 
-    // ── BMP ──────────────────────────────────────────────────────────────────
-    {
-        const fs::path enc = env_.path() / "validity_enc.bmp";
-        const fs::path dec = env_.path() / "validity_dec.bmp";
+    // Encrypt
+    SystemUtils::execute_cli_command(
+        this->executable_path + " --key " + this->keyPath.string() +
+        " --input "  + this->originalValidPath.string() +
+        " --output " + enc.string() + iv
+    );
 
-        SystemUtils::execute_cli_command(
-            this->executable_path + " --key " + keyPath.string() +
-            " --input "  + originalValidPath.string() +
-            " --output " + enc.string() + iv
-        );
-        SystemUtils::execute_cli_command(
-            this->executable_path + " --decrypt --key " + keyPath.string() +
-            " --input "  + enc.string() +
-            " --output " + dec.string() + iv
-        );
+    // Encrypted file must be a valid, loadable asset of this format.
+    bool encValid = factory_.verify_roundtrip(this->originalValidPath, enc);
+    EXPECT_TRUE(encValid)
+        << factory_.extension()
+        << ": encrypted file must be a valid loadable asset";
+    success &= encValid;
 
-        File::Bitmap ref(originalValidPath);
-        ref.load();
+    // Decrypt
+    SystemUtils::execute_cli_command(
+        this->executable_path + " --decrypt --key " + this->keyPath.string() +
+        " --input "  + enc.string() +
+        " --output " + dec.string() + iv
+    );
 
-        bool encValid = ref.verify_saved_file(enc);
-        EXPECT_TRUE(encValid)
-            << "BMP: encrypted file must be a valid loadable image";
-        success &= encValid;
-
-        bool decValid = ref.verify_saved_file(dec);
-        EXPECT_TRUE(decValid)
-            << "BMP: decrypted file must be a valid loadable image";
-        success &= decValid;
-    }
-
-    // ── PNG ───────────────────────────────────────────────────────────────────
-    {
-        const fs::path pngOrig = env_.path() / "validity_orig.png";
-        const fs::path enc     = env_.path() / "validity_enc.png";
-        const fs::path dec     = env_.path() / "validity_dec.png";
-        RasterImageFixture::createValidPng(pngOrig, 32, 32);
-
-        SystemUtils::execute_cli_command(
-            this->executable_path + " --key " + keyPath.string() +
-            " --input "  + pngOrig.string() +
-            " --output " + enc.string() + iv
-        );
-        SystemUtils::execute_cli_command(
-            this->executable_path + " --decrypt --key " + keyPath.string() +
-            " --input "  + enc.string() +
-            " --output " + dec.string() + iv
-        );
-
-        File::PNG ref(pngOrig);
-        ref.load();
-
-        bool encValid = ref.verify_saved_file(enc);
-        EXPECT_TRUE(encValid)
-            << "PNG: encrypted file must be a valid loadable image";
-        success &= encValid;
-
-        bool decValid = ref.verify_saved_file(dec);
-        EXPECT_TRUE(decValid)
-            << "PNG: decrypted file must be a valid loadable image";
-        success &= decValid;
-    }
-
-    // ── JPEG (saved as PNG on encrypt) ────────────────────────────────────────
-    {
-        const fs::path jpegOrig = env_.path() / "validity_orig.jpg";
-        const fs::path encPng   = env_.path() / "validity_enc_jpeg.png";
-        const fs::path dec      = env_.path() / "validity_dec_jpeg.jpg";
-        RasterImageFixture::createValidJpeg(jpegOrig, 32, 32);
-
-        SystemUtils::execute_cli_command(
-            this->executable_path + " --key " + keyPath.string() +
-            " --input "  + jpegOrig.string() +
-            " --output " + encPng.string().substr(
-                0, encPng.string().size() - 4
-            ) + ".jpg" + iv
-        );
-        SystemUtils::execute_cli_command(
-            this->executable_path + " --decrypt --key " + keyPath.string() +
-            " --input "  + encPng.string() +
-            " --output " + dec.string() + iv
-        );
-
-        File::JPEG ref(jpegOrig);
-        ref.load();
-
-        bool encValid = ref.verify_saved_file(encPng);
-        EXPECT_TRUE(encValid)
-            << "JPEG->PNG: encrypted file must be a valid loadable image";
-        success &= encValid;
-
-        bool decValid = ref.verify_saved_file(dec);
-        EXPECT_TRUE(decValid)
-            << "JPEG decrypted file must be a valid loadable image";
-        success &= decValid;
-    }
+    // Decrypted file must match the original according to this format's
+    // definition of a successful roundtrip.
+    bool decValid = factory_.verify_roundtrip(this->originalValidPath, dec);
+    EXPECT_TRUE(decValid)
+        << factory_.extension()
+        << ": decrypted file must match the original";
+    success &= decValid;
 
     return success;
 }

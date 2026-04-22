@@ -19,3 +19,12 @@ fs::path AssetFactory::make_empty(const fs::path& dir) const {
     TestUtils::IO::write_binary_file(p, 0);
     return p;
 }
+
+bool AssetFactory::verify_roundtrip(
+    const fs::path& original,
+    const fs::path& roundtripped
+) const {
+    // Default: byte-for-byte comparison. Correct for binary and text formats
+    // that do not re-encode on save.
+    return TestUtils::IO::read_file(original) == TestUtils::IO::read_file(roundtripped);
+}
