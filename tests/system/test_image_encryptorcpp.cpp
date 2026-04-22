@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "../include/system_workflows.hpp"
 #include "../include/bitmap_asset_factory.hpp"
+#include "../include/test_environment.hpp"
 
 namespace cltt = CommandLineToolsTest;
 
@@ -25,9 +26,8 @@ TEST(SystemTest, LargeFilePerformance) {
 }
 
 TEST(SystemTest, JpegEncryptSavesAsPng) {
-    BitmapAssetFactory factory;
-    cltt::SystemTests st(IMAGE_ENCRYPTOR_PATH, factory);
-    EXPECT_TRUE(st.test_jpeg_encryption_saves_as_png());
+    TestEnvironment env("test_data/jpeg_saves_as_png");
+    EXPECT_TRUE(cltt::test_jpeg_saves_as_png(IMAGE_ENCRYPTOR_PATH, env.path()));
 }
 
 TEST(SystemTest, MetadataRoundTrip) {
