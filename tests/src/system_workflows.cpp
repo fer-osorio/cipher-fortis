@@ -427,6 +427,7 @@ bool SystemTests::test_large_file_performance() {
         encrypt_end - start_time
     );
 
+    auto original_size  = std::filesystem::file_size(this->originalLargePath);
     bool encryptSucceeded = (encrypt_result == 0);
     EXPECT_TRUE(encryptSucceeded) << "Large file encryption should succeed";
     success &= encryptSucceeded;
@@ -434,7 +435,8 @@ bool SystemTests::test_large_file_performance() {
     if (encryptSucceeded) {
         bool encryptFast = (encrypt_duration.count() < 10000);
         EXPECT_TRUE(encryptFast)
-            << "48MB encryption should complete within 10 seconds (lasted "
+            << original_size
+            << " byte encryption should complete within 10 seconds (lasted "
             << encrypt_duration.count() << " milliseconds)";
         success &= encryptFast;
     }
@@ -456,6 +458,7 @@ bool SystemTests::test_large_file_performance() {
         decrypt_end - decrypt_start
     );
 
+    auto encrypted_size = std::filesystem::file_size(this->encryptedOriginalLargePath);
     bool decryptSucceeded = (decrypt_result == 0);
     EXPECT_TRUE(decryptSucceeded) << "Large file decryption should succeed";
     success &= decryptSucceeded;
@@ -463,18 +466,25 @@ bool SystemTests::test_large_file_performance() {
     if (decryptSucceeded) {
         bool decryptFast = (decrypt_duration.count() < 10000);
         EXPECT_TRUE(decryptFast)
-            << "48MB decryption should complete within 10 seconds (lasted "
+            << encrypted_size
+            << " byte decryption should complete within 10 seconds (lasted "
             << decrypt_duration.count() << " milliseconds)";
         success &= decryptFast;
     }
 
     // Verify integrity
-    auto original_size  = std::filesystem::file_size(this->originalLargePath);
-    auto decrypted_size = std::filesystem::file_size(this->decryptedOriginalLargePath);
+    if (factory_.is_lossless()){
+        auto decrypted_size = std::filesystem::file_size(this->decryptedOriginalLargePath);
 
-    bool sizeMatches = (original_size == decrypted_size);
-    EXPECT_TRUE(sizeMatches) << "Large file should maintain size after roundtrip";
-    success &= sizeMatches;
-
+        bool sizeMatches = (original_size == decrypted_size);
+        EXPECT_TRUE(sizeMatches) << "Large file should maintain size after roundtrip";
+        success &= sizeMatches;
+    } else {
+        bool formatValid = factory_.verify_roundtrip(
+            this->originalLargePath, this->decryptedOriginalLargePath
+        );
+        EXPECT_TRUE(formatValid) << "Decrypted file must be a valid, loadable asset";
+        success &= formatValid;
+    }
     return success;
 }
