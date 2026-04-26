@@ -10,11 +10,12 @@ fs::path JpegAssetFactory::make_valid(const fs::path& dir) const {
 
 fs::path JpegAssetFactory::make_large(const fs::path& dir) const {
     fs::path p = dir / "large.jpg";
-    TestUtils::Raster::make_jpeg(p, 4096, 4096);
+    TestUtils::Raster::make_jpeg(p, 2048, 2048);
     return p;
 }
 
 std::string JpegAssetFactory::extension() const { return "jpg"; }
+std::string JpegAssetFactory::encrypted_extension() const { return "png"; }
 
 bool JpegAssetFactory::verify_roundtrip(
     const fs::path& original,

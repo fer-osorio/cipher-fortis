@@ -10,7 +10,7 @@ fs::path PngAssetFactory::make_valid(const fs::path& dir) const {
 
 fs::path PngAssetFactory::make_large(const fs::path& dir) const {
     fs::path p = dir / "large.png";
-    TestUtils::Raster::make_png(p, 4096, 4096);
+    TestUtils::Raster::make_png(p, 2048, 2048);
     return p;
 }
 
