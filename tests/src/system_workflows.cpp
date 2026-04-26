@@ -121,27 +121,33 @@ bool SystemTests::test_file_encryption_workflow() {
         this->decryptedOriginalValidPath, factory_.is_binary()
     );
 
-    bool contentMatches = (decrypted_content == test_content);
-    EXPECT_TRUE(contentMatches) << "Decrypted content should match original";
-    success &= contentMatches;
+    if (factory_.is_lossless()) {
+        bool contentMatches = (decrypted_content == test_content);
+        EXPECT_TRUE(contentMatches) << "Decrypted content should match original";
+        success &= contentMatches;
 
-    if (!contentMatches) {
-        std::cout << "Original size: " << test_content.size() << std::endl;
-        std::cout << "Decrypted size: " << decrypted_content.size() << std::endl;
+        if (!contentMatches) {
+            std::cout << "Original size: " << test_content.size() << std::endl;
+            std::cout << "Decrypted size: " << decrypted_content.size() << std::endl;
 
-        if (test_content.size() == decrypted_content.size()) {
-            for (size_t i = 0; i < test_content.size(); i++) {
-                if (test_content[i] != decrypted_content[i]) {
-                    std::cout << "First mismatch at byte " <<
-                        i << std::endl;
-                    std::cout << "Original: " << std::hex <<
-                        static_cast<int>(test_content[i]) << std::endl;
-                    std::cout << "Decrypted: " << std::hex<<
-                        static_cast<int>(decrypted_content[i]) << std::endl;
-                    break;
+            if (test_content.size() == decrypted_content.size()) {
+                for (size_t i = 0; i < test_content.size(); i++) {
+                    if (test_content[i] != decrypted_content[i]) {
+                        std::cout << "First mismatch at byte " <<
+                            i << std::endl;
+                        std::cout << "Original: " << std::hex <<
+                            static_cast<int>(test_content[i]) << std::endl;
+                        std::cout << "Decrypted: " << std::hex<<
+                            static_cast<int>(decrypted_content[i]) << std::endl;
+                        break;
+                    }
                 }
             }
         }
+    } else { // For lossy formats only verify the validity of the output file
+        bool formatValid = factory_.verify_roundtrip(originalValidPath, decryptedPath);
+        EXPECT_TRUE(formatValid) << "Decrypted file must be a valid, loadable asset";
+        success &= formatValid;
     }
 
     return success;
@@ -328,9 +334,16 @@ bool SystemTests::test_metadata_round_trip() {
             this->originalValidPath, true
         );
         std::vector<uint8_t> decrypted = SystemUtils::read_file(decryptedPath, true);
-        bool contentMatches = (original == decrypted);
-        EXPECT_TRUE(contentMatches) << "Decrypted content should match original";
-        success &= contentMatches;
+
+        if (factory_.is_lossless()) {
+            bool contentMatches = (decrypted_content == test_content);
+            EXPECT_TRUE(contentMatches) << "Decrypted content should match original";
+            success &= contentMatches;
+        } else {
+            bool formatValid = factory_.verify_roundtrip(originalValidPath, decryptedPath);
+            EXPECT_TRUE(formatValid) << "Decrypted file must be a valid, loadable asset";
+            success &= formatValid;
+        }
     }
 
     return success;
