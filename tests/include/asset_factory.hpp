@@ -11,6 +11,9 @@ public:
     virtual fs::path    make_valid(const fs::path& dir) const = 0;
     virtual fs::path    make_large(const fs::path& dir) const = 0;
     virtual std::string extension()                     const = 0;
+    // Returns the extension the CLI will actually write to when encrypting
+    // an asset of this format. For most formats this equals extension().
+    virtual std::string encrypted_extension() const { return extension(); }
     virtual bool        is_binary()   const { return true; }
     virtual bool        is_lossless() const { return true; }
 
@@ -31,7 +34,6 @@ public:
      * @return true if the roundtrip is considered successful for this format.
      */
     virtual bool verify_roundtrip(
-        const fs::path& original,
-        const fs::path& roundtripped
+        const fs::path& original,const fs::path& roundtripped
     ) const;
 };
