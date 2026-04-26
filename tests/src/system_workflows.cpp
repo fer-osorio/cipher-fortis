@@ -145,7 +145,9 @@ bool SystemTests::test_file_encryption_workflow() {
             }
         }
     } else { // For lossy formats only verify the validity of the output file
-        bool formatValid = factory_.verify_roundtrip(originalValidPath, decryptedPath);
+        bool formatValid = factory_.verify_roundtrip(
+            this->originalValidPath, this->decryptedOriginalValidPath
+        );
         EXPECT_TRUE(formatValid) << "Decrypted file must be a valid, loadable asset";
         success &= formatValid;
     }
@@ -336,11 +338,13 @@ bool SystemTests::test_metadata_round_trip() {
         std::vector<uint8_t> decrypted = SystemUtils::read_file(decryptedPath, true);
 
         if (factory_.is_lossless()) {
-            bool contentMatches = (decrypted_content == test_content);
+            bool contentMatches = (decrypted == original);
             EXPECT_TRUE(contentMatches) << "Decrypted content should match original";
             success &= contentMatches;
         } else {
-            bool formatValid = factory_.verify_roundtrip(originalValidPath, decryptedPath);
+            bool formatValid = factory_.verify_roundtrip(
+                this->originalValidPath, decryptedPath
+            );
             EXPECT_TRUE(formatValid) << "Decrypted file must be a valid, loadable asset";
             success &= formatValid;
         }
