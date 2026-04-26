@@ -10,7 +10,7 @@ fs::path JpegAssetFactory::make_valid(const fs::path& dir) const {
 
 fs::path JpegAssetFactory::make_large(const fs::path& dir) const {
     fs::path p = dir / "large.jpg";
-    TestUtils::Raster::make_jpeg(p, 2048, 2048);
+    TestUtils::Raster::make_jpeg(p, 4096, 3072);
     return p;
 }
 
