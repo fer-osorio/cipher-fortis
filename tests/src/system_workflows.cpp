@@ -30,13 +30,13 @@ void SystemTests::setupTestEnvironment() {
         "does_not_exist." + factory_.extension()
     );
     this->encryptedOriginalValidPath = env_.path() / (
-        "encrypted_original_valid." + factory_.extension()
+        "encrypted_original_valid." + factory_.encrypted_extension()
     );
     this->decryptedOriginalValidPath = env_.path() / (
         "decrypted_original_valid." + factory_.extension()
     );
     this->encryptedOriginalLargePath = env_.path() / (
-        "encrypted_original_large." + factory_.extension()
+        "encrypted_original_large." + factory_.encrypted_extension()
     );
     this->decryptedOriginalLargePath = env_.path() / (
         "decrypted_original_large." + factory_.extension()
@@ -280,7 +280,7 @@ bool SystemTests::test_metadata_round_trip() {
 
     const fs::path metaPath      = this->env_.path() / "meta.json";
     const fs::path encryptedPath = env_.path() / (
-        "meta_enc." + factory_.extension()
+        "meta_enc." + factory_.encrypted_extension()
     );
     const fs::path decryptedPath = env_.path() / (
         "meta_dec." + factory_.extension()
@@ -347,7 +347,7 @@ bool SystemTests::test_file_validity() {
 
     const std::string iv = " --iv 00112233445566778899AABBCCDDEEFF";
     const fs::path enc = env_.path() / (
-        "validity_enc." + factory_.extension()
+        "validity_enc." + factory_.encrypted_extension()
     );
     const fs::path dec = env_.path() / (
         "validity_dec." + factory_.extension()
