@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 #include "../../file-handlers/include/png_image.hpp"
 #include "../../file-handlers/include/jpeg_image.hpp"
-#include "../include/raster_image_fixture.hpp"
+#include "raster_image_fixture.hpp"
 #include "../../core-crypto/include/encryptor.hpp"
 #include "../../core-crypto/include/cipher.hpp"
 #include <filesystem>

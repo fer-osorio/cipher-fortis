@@ -1,12 +1,12 @@
 // tests/system/test_image_encryptorcpp.cpp
 
 #include <gtest/gtest.h>
-#include "../include/system_workflows.hpp"
-#include "../include/asset_factory.hpp"
-#include "../include/bitmap_asset_factory.hpp"
-#include "../include/png_asset_factory.hpp"
-#include "../include/jpeg_asset_factory.hpp"
-#include "../include/test_environment.hpp"
+#include "system_workflows.hpp"
+#include "asset_factory.hpp"
+#include "bitmap_asset_factory.hpp"
+#include "png_asset_factory.hpp"
+#include "jpeg_asset_factory.hpp"
+#include "test_environment.hpp"
 
 namespace cltt = CommandLineToolsTest;
 

@@ -1,7 +1,7 @@
 // Unit test suite for FileBase contracts, exercised directly via File::FileBase
 #include <gtest/gtest.h>
 #include "../../file-handlers/include/file_base.hpp"
-#include "../include/file_base_fixture.hpp"
+#include "file_base_fixture.hpp"
 #include "../../core-crypto/include/encryptor.hpp"
 #include <filesystem>
 
