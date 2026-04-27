@@ -1,6 +1,6 @@
 #include "../include/png_asset_factory.hpp"
-#include "../include/raster_asset_utils.hpp"
-#include "../../file-handlers/include/png_image.hpp"
+#include "raster_asset_utils.hpp"
+#include "png_image.hpp"
 
 fs::path PngAssetFactory::make_valid(const fs::path& dir) const {
     fs::path p = dir / "valid.png";
@@ -10,7 +10,7 @@ fs::path PngAssetFactory::make_valid(const fs::path& dir) const {
 
 fs::path PngAssetFactory::make_large(const fs::path& dir) const {
     fs::path p = dir / "large.png";
-    TestUtils::Raster::make_png(p, 4096, 3072);
+    TestUtils::Raster::make_png(p, 3072, 3072);
     return p;
 }
 

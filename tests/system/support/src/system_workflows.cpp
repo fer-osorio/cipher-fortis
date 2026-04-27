@@ -1,10 +1,10 @@
 // System/E2E Testing Examples for AES File Encryption Tool
 // File: system/test_file_encryption_workflows.cpp
 
-#include "../include/raster_image_fixture.hpp"  // pulls in <gtest/gtest.h>
 #include <gtest/gtest.h>
-#include "../include/system_workflows.hpp"
-#include "../include/file_write_utils.hpp"
+#include "system_workflows.hpp"
+#include "file_write_utils.hpp"
+#include "raster_asset_utils.hpp"
 #include <filesystem>
 #include <cstdlib>
 #include <string>
@@ -245,7 +245,7 @@ bool CommandLineToolsTest::test_jpeg_saves_as_png(
     const fs::path encPng    = working_dir / "enc.png";
     const fs::path decJpg    = working_dir / "dec.jpg";
 
-    RasterImageFixture::createValidJpeg(jpegInput, 32, 32);
+    TestUtils::Raster::make_jpeg(jpegInput, 32, 32);
 
     // Encrypt — tool should redirect output to enc.png
     std::string encrypt_cmd =

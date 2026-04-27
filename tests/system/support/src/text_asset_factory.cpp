@@ -1,5 +1,5 @@
 #include "../include/text_asset_factory.hpp"
-#include "../include/file_write_utils.hpp"
+#include "file_write_utils.hpp"
 
 fs::path TextAssetFactory::make_valid(const fs::path& dir) const {
     fs::path p = dir / "valid.txt";

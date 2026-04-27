@@ -1,5 +1,5 @@
 #include "../include/asset_factory.hpp"
-#include "../include/file_write_utils.hpp"
+#include "file_write_utils.hpp"
 
 fs::path AssetFactory::make_corrupt(const fs::path& dir) const {
     fs::path p = dir / ("corrupt." + this->extension());
