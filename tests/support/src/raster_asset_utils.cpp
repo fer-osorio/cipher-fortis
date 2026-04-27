@@ -1,5 +1,5 @@
 #include "../include/raster_asset_utils.hpp"
-#include "../../third-party/stb/stb_image_write.h"
+#include "stb_image_write.h"
 #include <vector>
 #include <cstdint>
 
