@@ -1,6 +1,6 @@
-#include "../include/raster_image_fixture.hpp"
-#include "../include/raster_asset_utils.hpp"
-#include "../include/file_write_utils.hpp"
+#include "raster_image_fixture.hpp"
+#include "raster_asset_utils.hpp"
+#include "file_write_utils.hpp"
 
 void RasterImageFixture::SetUp() {
     this->validPngPath    = env_.path() / "valid_10x10.png";
@@ -29,17 +29,3 @@ void RasterImageFixture::SetUp() {
 }
 
 void RasterImageFixture::TearDown() {}
-
-void RasterImageFixture::createValidPng(const fs::path& path, int width, int height) {
-    TestUtils::Raster::make_png(path, width, height);
-}
-
-void RasterImageFixture::createValidBmp(const fs::path& path, int width, int height) {
-    TestUtils::Raster::make_bmp(path, width, height);
-}
-
-void RasterImageFixture::createValidJpeg(
-    const fs::path& path, int width, int height, int quality
-) {
-    TestUtils::Raster::make_jpeg(path, width, height, quality);
-}

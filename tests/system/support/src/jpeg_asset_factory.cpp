@@ -1,6 +1,6 @@
 #include "../include/jpeg_asset_factory.hpp"
-#include "../include/raster_asset_utils.hpp"
-#include "../../file-handlers/include/jpeg_image.hpp"
+#include "raster_asset_utils.hpp"
+#include "jpeg_image.hpp"
 
 fs::path JpegAssetFactory::make_valid(const fs::path& dir) const {
     fs::path p = dir / "valid.jpg";
@@ -10,7 +10,7 @@ fs::path JpegAssetFactory::make_valid(const fs::path& dir) const {
 
 fs::path JpegAssetFactory::make_large(const fs::path& dir) const {
     fs::path p = dir / "large.jpg";
-    TestUtils::Raster::make_jpeg(p, 4096, 3072);
+    TestUtils::Raster::make_jpeg(p, 3072, 3072);
     return p;
 }
 

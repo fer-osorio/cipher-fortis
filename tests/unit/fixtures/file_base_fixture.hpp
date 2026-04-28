@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <cstdint>
 #include "test_environment.hpp"
-#include "binary_asset_factory.hpp"
 
 namespace fs = std::filesystem;
 
@@ -21,9 +20,6 @@ protected:
 
     void SetUp() override;
     void TearDown() override;
-
-private:
-    BinaryAssetFactory   factory_;
 };
 
 #endif // FILE_BASE_FIXTURE_HPP

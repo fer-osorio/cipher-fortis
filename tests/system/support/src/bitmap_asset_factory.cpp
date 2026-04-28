@@ -1,6 +1,6 @@
 #include "../include/bitmap_asset_factory.hpp"
-#include "../include/raster_asset_utils.hpp"
-#include "../../file-handlers/include/bitmap.hpp"
+#include "raster_asset_utils.hpp"
+#include "bitmap.hpp"
 
 fs::path BitmapAssetFactory::make_valid(const fs::path& dir) const {
     fs::path p = dir / "valid.bmp";

@@ -1,26 +1,48 @@
 option(CF_BUILD_BENCHMARKS "Build AES throughput benchmark (off by default)" OFF)
 
-# ── Shared fixture library ────────────────────────────────────────────────────
-add_library(ciphfortis_test_fixtures STATIC
-    src/asset_factory.cpp
-    src/binary_asset_factory.cpp
-    src/bitmap_asset_factory.cpp
-    src/file_base_fixture.cpp
-    src/file_write_utils.cpp
-    src/jpeg_asset_factory.cpp
-    src/png_asset_factory.cpp
-    src/raster_asset_utils.cpp
-    src/raster_image_fixture.cpp
-    src/system_workflows.cpp
-    src/test_environment.cpp
-    src/text_asset_factory.cpp
+# ── Shared test infrastructure ────────────────────────────────────────────────
+add_library(ciphfortis_test_support STATIC
+    support/src/test_environment.cpp
+    support/src/file_write_utils.cpp
+    support/src/raster_asset_utils.cpp
 )
-target_include_directories(ciphfortis_test_fixtures PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+target_include_directories(ciphfortis_test_support PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/support/include
 )
-target_link_libraries(ciphfortis_test_fixtures
+target_link_libraries(ciphfortis_test_support
     PUBLIC  ciphfortis_files ciphfortis_core ciphfortis_aes
             ciphfortis_analysis ciphfortis_testing GTest::gtest
+    PRIVATE ciphfortis::compile_options third_party_stb
+)
+
+# ── Unit test fixtures ────────────────────────────────────────────────────────
+add_library(ciphfortis_unit_fixtures STATIC
+    unit/fixtures/file_base_fixture.cpp
+    unit/fixtures/raster_image_fixture.cpp
+)
+target_include_directories(ciphfortis_unit_fixtures PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/fixtures
+)
+target_link_libraries(ciphfortis_unit_fixtures
+    PUBLIC  ciphfortis_test_support
+    PRIVATE ciphfortis::compile_options
+)
+
+# ── System test scaffolding ───────────────────────────────────────────────────
+add_library(ciphfortis_system_support STATIC
+    system/support/src/asset_factory.cpp
+    system/support/src/binary_asset_factory.cpp
+    system/support/src/bitmap_asset_factory.cpp
+    system/support/src/jpeg_asset_factory.cpp
+    system/support/src/png_asset_factory.cpp
+    system/support/src/text_asset_factory.cpp
+    system/support/src/system_workflows.cpp
+)
+target_include_directories(ciphfortis_system_support PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/system/support/include
+)
+target_link_libraries(ciphfortis_system_support
+    PUBLIC  ciphfortis_test_support
     PRIVATE ciphfortis::compile_options
 )
 
@@ -57,11 +79,11 @@ add_ciphfortis_test(NAME test_operation_modes  SOURCES unit/test_operation_modes
 add_ciphfortis_test(NAME test_file_base        SOURCES unit/test_file_base.cpp
     LABEL unit
     EXTRA_LIBS ciphfortis_files ciphfortis_core ciphfortis_aes
-               ciphfortis_analysis ciphfortis_test_fixtures)
+               ciphfortis_analysis ciphfortis_unit_fixtures)
 add_ciphfortis_test(NAME test_raster_image     SOURCES unit/test_raster_image.cpp
     LABEL unit
     EXTRA_LIBS ciphfortis_files ciphfortis_core ciphfortis_aes
-               ciphfortis_analysis ciphfortis_test_fixtures)
+               ciphfortis_analysis ciphfortis_unit_fixtures)
 add_ciphfortis_test(NAME test_padding          SOURCES unit/test_padding.cpp
     LABEL unit EXTRA_LIBS ciphfortis_core ciphfortis_aes)
 
@@ -81,7 +103,7 @@ add_ciphfortis_test(NAME test_cli_crypto_config  SOURCES integration/test_cli_cr
 add_ciphfortis_test(NAME test_image_encryptorcpp SOURCES system/test_image_encryptorcpp.cpp
     LABEL system
     EXTRA_LIBS ciphfortis_files ciphfortis_core ciphfortis_aes
-               ciphfortis_analysis ciphfortis_test_fixtures)
+               ciphfortis_analysis ciphfortis_system_support)
 target_compile_definitions(test_image_encryptorcpp PRIVATE
     IMAGE_ENCRYPTOR_PATH="$<TARGET_FILE:image-encryptor>"
 )
