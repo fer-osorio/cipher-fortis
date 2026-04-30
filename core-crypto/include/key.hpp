@@ -5,6 +5,7 @@
 #include<stddef.h>
 #include<stdint.h>
 #include<vector>
+#include "crypto_types.hpp"
 
 namespace CipherFortis {
 
@@ -15,7 +16,8 @@ class Cipher;									// Declare cipher class, so we can make it a friend of Key
 
 struct Key {
 public:
-	enum struct LengthBits {_128 = 128,_192 = 192,_256 = 256};			// -Allowed AES key lengths
+	// Preserve the existing nested name so all callsites compile unchanged.
+	using LengthBits = CipherFortis::KeyLengthBits;
 private:
 	uint8_t* data = NULL;
 	LengthBits lenBits;							// -Length in bits.
