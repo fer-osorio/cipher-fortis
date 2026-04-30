@@ -2,7 +2,7 @@
 #define HSM_CIPHER_HPP
 
 #include "../../core-crypto/include/encryptor.hpp"
-#include "../../core-crypto/include/cipher.hpp"
+#include "../../core-crypto/include/crypto_types.hpp"
 #include "hsm_session.hpp"
 #include "hsm_key_handle.hpp"
 
@@ -19,7 +19,7 @@ public:
     // The caller must keep HSMSession alive for the lifetime of HSMCipher.
     HSMCipher(
         HSMSession& session,
-        Cipher::OperationMode::Identifier mode
+        CipherFortis::OperationModeID mode
     );
 
     ~HSMCipher() override = default;
@@ -34,7 +34,7 @@ public:
     // unconditionally — not optional, not configurable.
 
     HSMKeyHandle generateKey(
-        Key::LengthBits length, const std::string& label
+        CipherFortis::KeyLengthBits length, const std::string& label
     );
 
     // Throws std::runtime_error if no key with this label exists.
@@ -64,7 +64,7 @@ public:
 
 private:
     HSMSession&                       session_;
-    Cipher::OperationMode::Identifier mode_;
+    CipherFortis::OperationModeID mode_;
     const HSMKeyHandle*               active_key_ = nullptr;
     std::vector<uint8_t>              iv_;
 
