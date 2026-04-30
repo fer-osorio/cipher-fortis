@@ -3,6 +3,7 @@
 
 #include"key.hpp"
 #include"encryptor.hpp"
+#include"crypto_types.hpp"
 
 namespace CipherFortis {
 
@@ -20,13 +21,8 @@ class Cipher : public Encryptor {
 public:
 	struct OperationMode{
 	public:
-		enum struct Identifier {
-			Unknown,
-			ECB,							// -Electronic Code Book (not recommended).
-			CBC,							// -Cipher Block Chaining.
-			OFB,							// -Output Feedback.
-			CTR,							// -Counter.
-		};
+		// Preserve the existing nested name so all callsites compile unchanged.
+		using Identifier = CipherFortis::OperationModeID;
 
 	private:
 		Identifier ID_ = Identifier::ECB;

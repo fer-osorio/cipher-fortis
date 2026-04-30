@@ -33,7 +33,7 @@ void HSMCipher::checkActiveKey() const {
 // ---------------------------------------------------------------------------
 
 HSMCipher::HSMCipher(
-    HSMSession& session, Cipher::OperationMode::Identifier mode
+    HSMSession& session, CipherFortis::OperationModeID mode
 ) :
     session_(session), mode_(mode)
 {}
@@ -42,7 +42,7 @@ HSMCipher::HSMCipher(
 // Key management
 // ---------------------------------------------------------------------------
 
-HSMKeyHandle HSMCipher::generateKey(Key::LengthBits length, const std::string& label) {
+HSMKeyHandle HSMCipher::generateKey(CipherFortis::KeyLengthBits length, const std::string& label) {
     CK_BBOOL      yes      = CK_TRUE,  no = CK_FALSE;
     CK_KEY_TYPE   aes_type = CKK_AES;
     CK_OBJECT_CLASS cls    = CKO_SECRET_KEY;
@@ -121,11 +121,11 @@ HSMKeyHandle HSMCipher::findKey(const std::string& label) {
         )
     );
 
-    Key::LengthBits length;
+    CipherFortis::KeyLengthBits length;
     switch (value_len * 8) {
-        case 192: length = Key::LengthBits::_192; break;
-        case 256: length = Key::LengthBits::_256; break;
-        default:  length = Key::LengthBits::_128; break;
+        case 192: length = CipherFortis::KeyLengthBits::_192; break;
+        case 256: length = CipherFortis::KeyLengthBits::_256; break;
+        default:  length = CipherFortis::KeyLengthBits::_128; break;
     }
 
     return HSMKeyHandle(handle, label, "", length);
@@ -157,10 +157,10 @@ void HSMCipher::setIV(const std::vector<uint8_t>& iv) {
 
 CK_MECHANISM HSMCipher::buildMechanism() const {
     switch (mode_) {
-        case Cipher::OperationMode::Identifier::ECB:
+        case CipherFortis::OperationModeID::ECB:
             return { CKM_AES_ECB, nullptr, 0 };
 
-        case Cipher::OperationMode::Identifier::CBC:
+        case CipherFortis::OperationModeID::CBC:
             if (iv_.size() != 16)
                 throw std::invalid_argument(
                     "HSMCipher: CBC mode requires a 16-byte IV"
@@ -170,7 +170,7 @@ CK_MECHANISM HSMCipher::buildMechanism() const {
                      const_cast<uint8_t*>(iv_.data()),
                      static_cast<CK_ULONG>(iv_.size()) };
 
-        case Cipher::OperationMode::Identifier::OFB:
+        case CipherFortis::OperationModeID::OFB:
             throw std::invalid_argument("OFB mode is not supported by this PKCS#11 token");
             /*if (iv_.size() != 16)  Uncomment only with confirmation of OFB mode support
                 throw std::invalid_argument(
@@ -180,7 +180,7 @@ CK_MECHANISM HSMCipher::buildMechanism() const {
                      const_cast<uint8_t*>(iv_.data()),
                      static_cast<CK_ULONG>(iv_.size()) };*/
 
-        case Cipher::OperationMode::Identifier::CTR: {
+        case CipherFortis::OperationModeID::CTR: {
             if (iv_.size() != 16)
                 throw std::invalid_argument(
                     "HSMCipher: CTR mode requires a 16-byte IV"

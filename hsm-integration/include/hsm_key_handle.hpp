@@ -3,7 +3,7 @@
 
 #include <string>
 #include <p11-kit-1/p11-kit/pkcs11.h>
-#include "../../core-crypto/include/key.hpp" // for Key::LengthBits — reuse existing enum
+#include "../../core-crypto/include/crypto_types.hpp"
 
 namespace CipherFortis {
 namespace HSM {
@@ -14,7 +14,7 @@ public:
         CK_OBJECT_HANDLE   handle,
         const std::string& label,
         const std::string& id_hex,
-        Key::LengthBits    length
+        CipherFortis::KeyLengthBits    length
     );
 
     // Default constructor produces an invalid handle.
@@ -23,7 +23,7 @@ public:
     CK_OBJECT_HANDLE   handle() const { return handle_; }
     const std::string& label()  const { return label_;  }
     const std::string& idHex()  const { return id_hex_; }
-    Key::LengthBits    length() const { return length_;  }
+    CipherFortis::KeyLengthBits    length() const { return length_;  }
 
     bool isValid() const { return handle_ != CK_INVALID_HANDLE; }
 
@@ -33,7 +33,7 @@ private:
     CK_OBJECT_HANDLE handle_  = CK_INVALID_HANDLE;
     std::string      label_;
     std::string      id_hex_;
-    Key::LengthBits  length_  = Key::LengthBits::_128;
+    CipherFortis::KeyLengthBits  length_  = CipherFortis::KeyLengthBits::_128;
 };
 
 } // namespace HSM
