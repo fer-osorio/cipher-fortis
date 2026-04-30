@@ -7,7 +7,7 @@ HSMKeyHandle::HSMKeyHandle(
     CK_OBJECT_HANDLE    handle,
     const std::string&  label,
     const std::string&  id_hex,
-    Key::LengthBits     length
+    CipherFortis::KeyLengthBits     length
 ) :
     handle_(handle),
     label_(label),
